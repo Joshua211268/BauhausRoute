@@ -1,14 +1,20 @@
 package com.example.bauhausroute
 
 import android.content.ContentResolver
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Paint
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Bundle
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -26,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,12 +42,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.exifinterface.media.ExifInterface
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.bauhausroute.ui.theme.BauhausBlue
 import com.example.bauhausroute.ui.theme.BauhausCarbonBlack
 import com.example.bauhausroute.ui.theme.BauhausGeometryBlue
@@ -52,6 +64,17 @@ import com.example.bauhausroute.ui.theme.BauhausWarmWhite
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 data class GeoPointData(
     val latitude: Double,
@@ -120,19 +143,35 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var points by remember { mutableStateOf<List<GeoPointData>>(emptyList()) }
-    var hasMissingGps by remember { mutableStateOf(false) }
+    var selectedCount by remember { mutableStateOf(0) }
+    var missingGpsCount by remember { mutableStateOf(0) }
+    var readErrorCount by remember { mutableStateOf(0) }
+    var diagnostics by remember { mutableStateOf<List<String>>(emptyList()) }
     var isParsing by remember { mutableStateOf(false) }
 
-    val photoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia()
-    ) { uris ->
+    fun handlePickedUris(uris: List<Uri>) {
         scope.launch {
             isParsing = true
             val result = parseGeoPoints(context.contentResolver, uris)
             points = result.points
-            hasMissingGps = result.hasMissingGps
+            selectedCount = result.selectedCount
+            missingGpsCount = result.missingGpsCount
+            readErrorCount = result.readErrorCount
+            diagnostics = result.diagnostics
             isParsing = false
         }
+    }
+
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        handlePickedUris(uris)
+    }
+
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        handlePickedUris(uris)
     }
 
     Column(modifier = modifier) {
@@ -142,7 +181,7 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
             style = androidx.compose.material3.MaterialTheme.typography.headlineLarge
         )
 
-        Spacer(modifier = Modifier.height(96.dp))
+        Spacer(modifier = Modifier.height(56.dp))
 
         BauhausPhotoButton(
             text = if (isParsing) "PARSING..." else "SELECT PHOTOS",
@@ -154,20 +193,68 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
             enabled = !isParsing
         )
 
-        if (hasMissingGps) {
+        Spacer(modifier = Modifier.height(12.dp))
+
+        BauhausPhotoButton(
+            text = "SELECT HEIF FILES",
+            onClick = {
+                filePicker.launch(arrayOf("image/*", "image/heic", "image/heif"))
+            },
+            enabled = !isParsing
+        )
+
+        if (selectedCount > 0) {
+            Text(
+                text = "Selected $selectedCount files / Found ${points.size} GPS points",
+                color = BauhausCarbonBlack,
+                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(top = 16.dp)
+            )
+        }
+
+        if (missingGpsCount > 0) {
             Text(
                 text = "Some photos lack GPS data",
                 color = BauhausRed,
                 style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 20.dp)
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        if (readErrorCount > 0) {
+            Text(
+                text = "$readErrorCount files could not be read as EXIF images",
+                color = BauhausRed,
+                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        if (points.isNotEmpty()) {
+            BauhausRouteMap(
+                points = points.map { it.toGeoPoint() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(320.dp)
+                    .padding(top = 24.dp)
             )
         }
 
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
+                .weight(1f, fill = false)
                 .padding(top = 24.dp)
         ) {
+            itemsIndexed(diagnostics) { _, item ->
+                Text(
+                    text = item,
+                    color = BauhausCarbonBlack,
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
+
             itemsIndexed(points) { index, point ->
                 Text(
                     text = "${index + 1}. ${point.latitude}, ${point.longitude}",
@@ -178,6 +265,72 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+@Composable
+fun BauhausRouteMap(
+    points: List<GeoPoint>,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val orderedPoints = remember(points) { sortByNearestNeighbor(points) }
+    val markerIcon = remember { createBauhausMarkerIcon(context) }
+    val mapView = remember {
+        Configuration.getInstance().userAgentValue = context.packageName
+        MapView(context).apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            controller.setZoom(15.0)
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, mapView) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            mapView.onDetach()
+        }
+    }
+
+    AndroidView(
+        modifier = modifier.border(BorderStroke(3.dp, BauhausCarbonBlack)),
+        factory = { mapView },
+        update = { view ->
+            view.overlays.clear()
+
+            if (orderedPoints.isNotEmpty()) {
+                view.controller.setCenter(orderedPoints.first())
+                view.controller.setZoom(15.0)
+
+                val routeLine = Polyline().apply {
+                    setPoints(orderedPoints)
+                    outlinePaint.color = BauhausBlue.toArgb()
+                    outlinePaint.strokeWidth = 8f
+                }
+                view.overlays.add(routeLine)
+
+                orderedPoints.forEachIndexed { index, point ->
+                    val marker = Marker(view).apply {
+                        position = point
+                        icon = markerIcon
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        title = "Stop ${index + 1}"
+                    }
+                    view.overlays.add(marker)
+                }
+            }
+
+            view.invalidate()
+        }
+    )
 }
 
 @Composable
@@ -210,7 +363,10 @@ private val BauhausYellowButtonColor = Color(0xFFF2B705)
 
 private data class GeoParseResult(
     val points: List<GeoPointData>,
-    val hasMissingGps: Boolean
+    val selectedCount: Int,
+    val missingGpsCount: Int,
+    val readErrorCount: Int,
+    val diagnostics: List<String>
 )
 
 private suspend fun parseGeoPoints(
@@ -218,18 +374,36 @@ private suspend fun parseGeoPoints(
     uris: List<Uri>
 ): GeoParseResult = withContext(Dispatchers.IO) {
     val points = mutableListOf<GeoPointData>()
-    var hasMissingGps = false
+    val diagnostics = mutableListOf<String>()
+    var missingGpsCount = 0
+    var readErrorCount = 0
 
     uris.forEach { uri ->
-        val point = readGeoPoint(contentResolver, uri)
-        if (point == null) {
-            hasMissingGps = true
-        } else {
-            points += point
+        val displayName = contentResolver.getDisplayName(uri)
+        val mimeType = contentResolver.getType(uri) ?: "unknown type"
+
+        try {
+            val point = readGeoPoint(contentResolver, uri)
+            if (point == null) {
+                missingGpsCount += 1
+                diagnostics += "NO GPS: $displayName ($mimeType)"
+            } else {
+                points += point
+                diagnostics += "GPS OK: $displayName ($mimeType)"
+            }
+        } catch (exception: Exception) {
+            readErrorCount += 1
+            diagnostics += "READ FAIL: $displayName ($mimeType)"
         }
     }
 
-    GeoParseResult(points = points, hasMissingGps = hasMissingGps)
+    GeoParseResult(
+        points = points,
+        selectedCount = uris.size,
+        missingGpsCount = missingGpsCount,
+        readErrorCount = readErrorCount,
+        diagnostics = diagnostics
+    )
 }
 
 private fun readGeoPoint(
@@ -247,6 +421,71 @@ private fun readGeoPoint(
             null
         }
     }
+}
+
+private fun ContentResolver.getDisplayName(uri: Uri): String {
+    return query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val displayNameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (displayNameIndex >= 0 && cursor.moveToFirst()) {
+            cursor.getString(displayNameIndex)
+        } else {
+            uri.lastPathSegment ?: "unknown file"
+        }
+    } ?: (uri.lastPathSegment ?: "unknown file")
+}
+
+private fun GeoPointData.toGeoPoint(): GeoPoint {
+    return GeoPoint(latitude, longitude)
+}
+
+fun sortByNearestNeighbor(points: List<GeoPoint>): List<GeoPoint> {
+    if (points.size <= 2) return points
+
+    val ordered = mutableListOf(points.first())
+    val remaining = points.drop(1).toMutableList()
+
+    while (remaining.isNotEmpty()) {
+        val current = ordered.last()
+        val next = remaining.minBy { current.distanceInMetersTo(it) }
+        ordered += next
+        remaining -= next
+    }
+
+    return ordered
+}
+
+private fun GeoPoint.distanceInMetersTo(other: GeoPoint): Double {
+    val earthRadiusMeters = 6_371_000.0
+    val lat1 = Math.toRadians(latitude)
+    val lat2 = Math.toRadians(other.latitude)
+    val deltaLat = Math.toRadians(other.latitude - latitude)
+    val deltaLon = Math.toRadians(other.longitude - longitude)
+    val haversine = sin(deltaLat / 2).pow(2) +
+        cos(lat1) * cos(lat2) * sin(deltaLon / 2).pow(2)
+    return earthRadiusMeters * 2 * atan2(sqrt(haversine), sqrt(1 - haversine))
+}
+
+private fun createBauhausMarkerIcon(context: Context): BitmapDrawable {
+    val size = 44
+    val center = size / 2f
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = AndroidCanvas(bitmap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    paint.style = Paint.Style.FILL
+    paint.color = Color.Transparent.toArgb()
+    canvas.drawCircle(center, center, center, paint)
+
+    paint.color = BauhausCarbonBlack.toArgb()
+    canvas.drawCircle(center, center, 18f, paint)
+
+    paint.color = Color.White.toArgb()
+    canvas.drawCircle(center, center, 13f, paint)
+
+    paint.color = BauhausRed.toArgb()
+    canvas.drawCircle(center, center, 8f, paint)
+
+    return BitmapDrawable(context.resources, bitmap)
 }
 
 @Preview(showBackground = true)
