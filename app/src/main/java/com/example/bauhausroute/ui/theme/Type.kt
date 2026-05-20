@@ -10,8 +10,8 @@ val Typography = Typography(
     headlineLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Black,
-        fontSize = 40.sp,
-        lineHeight = 44.sp,
+        fontSize = 34.sp,
+        lineHeight = 36.sp,
         letterSpacing = 0.sp
     ),
     titleLarge = TextStyle(
@@ -31,7 +31,7 @@ val Typography = Typography(
     ,
     labelLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.Black,
         fontSize = 14.sp,
         lineHeight = 18.sp,
         letterSpacing = 0.sp

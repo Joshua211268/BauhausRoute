@@ -7,16 +7,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val BauhausColorScheme = lightColorScheme(
-    primary = BauhausRed,
+    primary = ExpressiveCoral,
     secondary = BauhausBlue,
-    tertiary = BauhausYellow,
-    background = BauhausWarmWhite,
-    surface = BauhausWarmWhite,
-    onPrimary = Color.White,
+    tertiary = ExpressiveAmber,
+    background = ExpressiveWarmBackground,
+    surface = ExpressiveSurface,
+    surfaceVariant = ExpressivePeach,
+    onPrimary = ExpressiveInk,
     onSecondary = Color.White,
-    onTertiary = BauhausCarbonBlack,
-    onBackground = BauhausCarbonBlack,
-    onSurface = BauhausCarbonBlack
+    onTertiary = ExpressiveInk,
+    onBackground = ExpressiveInk,
+    onSurface = ExpressiveInk,
+    onSurfaceVariant = ExpressiveInk
 )
 
 @Composable

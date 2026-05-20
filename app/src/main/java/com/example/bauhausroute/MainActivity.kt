@@ -20,30 +20,41 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -61,6 +72,12 @@ import com.example.bauhausroute.ui.theme.BauhausGeometryYellow
 import com.example.bauhausroute.ui.theme.BauhausRed
 import com.example.bauhausroute.ui.theme.BauhausTheme
 import com.example.bauhausroute.ui.theme.BauhausWarmWhite
+import com.example.bauhausroute.ui.theme.ExpressiveAmber
+import com.example.bauhausroute.ui.theme.ExpressiveCoral
+import com.example.bauhausroute.ui.theme.ExpressiveInk
+import com.example.bauhausroute.ui.theme.ExpressiveMuted
+import com.example.bauhausroute.ui.theme.ExpressivePeach
+import com.example.bauhausroute.ui.theme.ExpressiveSurface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -70,11 +87,6 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 data class GeoPointData(
     val latitude: Double,
@@ -91,7 +103,7 @@ class MainActivity : ComponentActivity() {
                     RouteDiscoveryScreen(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(32.dp)
+                            .padding(18.dp)
                     )
                 }
             }
@@ -148,6 +160,8 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
     var readErrorCount by remember { mutableStateOf(0) }
     var diagnostics by remember { mutableStateOf<List<String>>(emptyList()) }
     var isParsing by remember { mutableStateOf(false) }
+    var isRouting by remember { mutableStateOf(false) }
+    var roadRoute by remember { mutableStateOf<RoadRouteResult?>(null) }
 
     fun handlePickedUris(uris: List<Uri>) {
         scope.launch {
@@ -158,6 +172,7 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
             missingGpsCount = result.missingGpsCount
             readErrorCount = result.readErrorCount
             diagnostics = result.diagnostics
+            roadRoute = null
             isParsing = false
         }
     }
@@ -174,84 +189,263 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
         handlePickedUris(uris)
     }
 
-    Column(modifier = modifier) {
-        Text(
-            text = "ROUTE\nDISCOVERY",
-            color = BauhausCarbonBlack,
-            style = androidx.compose.material3.MaterialTheme.typography.headlineLarge
-        )
+    LaunchedEffect(points) {
+        val routePoints = points.map { it.toGeoPoint() }
+        if (routePoints.isEmpty()) {
+            roadRoute = null
+            return@LaunchedEffect
+        }
 
-        Spacer(modifier = Modifier.height(56.dp))
+        isRouting = true
+        roadRoute = RoadRouteService.planRoute(routePoints)
+        isRouting = false
+    }
 
-        BauhausPhotoButton(
-            text = if (isParsing) "PARSING..." else "SELECT PHOTOS",
-            onClick = {
-                photoPicker.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                )
-            },
-            enabled = !isParsing
-        )
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        HeaderPanel()
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ExpressiveActionButton(
+                text = if (isParsing) "PARSING" else "PHOTOS",
+                onClick = {
+                    photoPicker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                },
+                enabled = !isParsing,
+                modifier = Modifier.weight(1f)
+            )
 
-        BauhausPhotoButton(
-            text = "SELECT HEIF FILES",
-            onClick = {
-                filePicker.launch(arrayOf("image/*", "image/heic", "image/heif"))
-            },
-            enabled = !isParsing
-        )
-
-        if (selectedCount > 0) {
-            Text(
-                text = "Selected $selectedCount files / Found ${points.size} GPS points",
-                color = BauhausCarbonBlack,
-                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 16.dp)
+            ExpressiveActionButton(
+                text = "HEIF",
+                onClick = {
+                    filePicker.launch(arrayOf("image/*", "image/heic", "image/heif"))
+                },
+                enabled = !isParsing,
+                modifier = Modifier.weight(1f),
+                containerColor = ExpressivePeach
             )
         }
 
-        if (missingGpsCount > 0) {
-            Text(
-                text = "Some photos lack GPS data",
-                color = BauhausRed,
-                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-
-        if (readErrorCount > 0) {
-            Text(
-                text = "$readErrorCount files could not be read as EXIF images",
-                color = BauhausRed,
-                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
+        StatusPanel(
+            selectedCount = selectedCount,
+            gpsCount = points.size,
+            missingGpsCount = missingGpsCount,
+            readErrorCount = readErrorCount,
+            isRouting = isRouting,
+            roadRoute = roadRoute
+        )
 
         if (points.isNotEmpty()) {
-            BauhausRouteMap(
-                points = points.map { it.toGeoPoint() },
+            val fallbackStops = sortByNearestNeighbor(points.map { it.toGeoPoint() })
+            val route = roadRoute
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(320.dp)
-                    .padding(top = 24.dp)
-            )
+                    .height(360.dp),
+                shape = RoundedCornerShape(30.dp),
+                color = ExpressiveSurface,
+                tonalElevation = 6.dp,
+                shadowElevation = 4.dp,
+                border = BorderStroke(2.dp, ExpressiveInk)
+            ) {
+                BauhausRouteMap(
+                    stopPoints = route?.orderedStops ?: fallbackStops,
+                    routePoints = route?.path ?: fallbackStops,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(8.dp)
+                )
+            }
+        } else {
+            EmptyMapPanel()
         }
 
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f, fill = false)
-                .padding(top = 24.dp)
+        DebugPanel(
+            roadDiagnostics = roadRoute?.diagnostics.orEmpty(),
+            fileDiagnostics = diagnostics,
+            points = points,
+            modifier = Modifier.weight(1f, fill = true)
+        )
+    }
+}
+
+@Composable
+fun HeaderPanel() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(32.dp),
+        color = ExpressiveSurface,
+        tonalElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            itemsIndexed(diagnostics) { _, item ->
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "ROUTE\nDISCOVERY",
+                    color = ExpressiveInk,
+                    style = MaterialTheme.typography.headlineLarge
+                )
+                Text(
+                    text = "EXIF to road route",
+                    color = ExpressiveMuted,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(58.dp)
+                    .clip(CircleShape)
+                    .background(ExpressiveCoral),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "OSM",
+                    color = ExpressiveInk,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StatusPanel(
+    selectedCount: Int,
+    gpsCount: Int,
+    missingGpsCount: Int,
+    readErrorCount: Int,
+    isRouting: Boolean,
+    roadRoute: RoadRouteResult?
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(26.dp),
+        color = ExpressiveSurface,
+        tonalElevation = 3.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SummaryChip("$selectedCount files", ExpressivePeach)
+                SummaryChip("$gpsCount GPS", ExpressiveAmber)
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val routeLabel = when {
+                    isRouting -> "planning"
+                    roadRoute == null -> "waiting"
+                    roadRoute.isFallback -> "fallback"
+                    else -> roadRoute.distanceMeters.toKilometerLabel()
+                }
+                SummaryChip(routeLabel, if (roadRoute?.isFallback == true) ExpressivePeach else BauhausBlue, invert = roadRoute?.isFallback != true && roadRoute != null)
+
+                if (missingGpsCount > 0) {
+                    SummaryChip("$missingGpsCount no GPS", ExpressivePeach)
+                }
+                if (readErrorCount > 0) {
+                    SummaryChip("$readErrorCount failed", ExpressivePeach)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SummaryChip(
+    text: String,
+    color: Color,
+    invert: Boolean = false
+) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = color,
+        border = BorderStroke(1.dp, if (invert) color else ExpressiveInk)
+    ) {
+        Text(
+            text = text,
+            color = if (invert) Color.White else ExpressiveInk,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+        )
+    }
+}
+
+@Composable
+fun EmptyMapPanel() {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(250.dp),
+        shape = RoundedCornerShape(30.dp),
+        color = ExpressivePeach,
+        tonalElevation = 4.dp
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Select geotagged photos",
+                color = ExpressiveInk,
+                style = MaterialTheme.typography.titleLarge
+            )
+        }
+    }
+}
+
+@Composable
+fun DebugPanel(
+    roadDiagnostics: List<String>,
+    fileDiagnostics: List<String>,
+    points: List<GeoPointData>,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = ExpressiveSurface.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, ExpressivePeach)
+    ) {
+        LazyColumn(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            item {
+                Text(
+                    text = "DEBUG",
+                    color = ExpressiveMuted,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
+
+            itemsIndexed(roadDiagnostics) { _, item ->
                 Text(
                     text = item,
-                    color = BauhausCarbonBlack,
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    color = if (item.contains("FAIL")) BauhausRed else BauhausBlue,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(vertical = 3.dp)
+                )
+            }
+
+            itemsIndexed(fileDiagnostics) { _, item ->
+                Text(
+                    text = item,
+                    color = ExpressiveInk,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(vertical = 3.dp)
                 )
             }
 
@@ -259,8 +453,8 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
                 Text(
                     text = "${index + 1}. ${point.latitude}, ${point.longitude}",
                     color = BauhausBlue,
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(vertical = 6.dp)
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(vertical = 3.dp)
                 )
             }
         }
@@ -269,12 +463,12 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
 
 @Composable
 fun BauhausRouteMap(
-    points: List<GeoPoint>,
+    stopPoints: List<GeoPoint>,
+    routePoints: List<GeoPoint>,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val orderedPoints = remember(points) { sortByNearestNeighbor(points) }
     val markerIcon = remember { createBauhausMarkerIcon(context) }
     val mapView = remember {
         Configuration.getInstance().userAgentValue = context.packageName
@@ -301,23 +495,23 @@ fun BauhausRouteMap(
     }
 
     AndroidView(
-        modifier = modifier.border(BorderStroke(3.dp, BauhausCarbonBlack)),
+        modifier = modifier.clip(RoundedCornerShape(24.dp)),
         factory = { mapView },
         update = { view ->
             view.overlays.clear()
 
-            if (orderedPoints.isNotEmpty()) {
-                view.controller.setCenter(orderedPoints.first())
+            if (stopPoints.isNotEmpty()) {
+                view.controller.setCenter(stopPoints.first())
                 view.controller.setZoom(15.0)
 
                 val routeLine = Polyline().apply {
-                    setPoints(orderedPoints)
+                    setPoints(routePoints)
                     outlinePaint.color = BauhausBlue.toArgb()
                     outlinePaint.strokeWidth = 8f
                 }
                 view.overlays.add(routeLine)
 
-                orderedPoints.forEachIndexed { index, point ->
+                stopPoints.forEachIndexed { index, point ->
                     val marker = Marker(view).apply {
                         position = point
                         icon = markerIcon
@@ -356,6 +550,36 @@ fun BauhausPhotoButton(
             style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(top = 16.dp)
         )
+    }
+}
+
+@Composable
+fun ExpressiveActionButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    containerColor: Color = ExpressiveAmber
+) {
+    Surface(
+        modifier = modifier
+            .height(58.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(999.dp),
+        color = if (enabled) containerColor else ExpressivePeach.copy(alpha = 0.7f),
+        border = BorderStroke(2.dp, ExpressiveInk),
+        shadowElevation = 2.dp
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = ExpressiveInk,
+                style = MaterialTheme.typography.titleLarge
+            )
+        }
     }
 }
 
@@ -436,33 +660,6 @@ private fun ContentResolver.getDisplayName(uri: Uri): String {
 
 private fun GeoPointData.toGeoPoint(): GeoPoint {
     return GeoPoint(latitude, longitude)
-}
-
-fun sortByNearestNeighbor(points: List<GeoPoint>): List<GeoPoint> {
-    if (points.size <= 2) return points
-
-    val ordered = mutableListOf(points.first())
-    val remaining = points.drop(1).toMutableList()
-
-    while (remaining.isNotEmpty()) {
-        val current = ordered.last()
-        val next = remaining.minBy { current.distanceInMetersTo(it) }
-        ordered += next
-        remaining -= next
-    }
-
-    return ordered
-}
-
-private fun GeoPoint.distanceInMetersTo(other: GeoPoint): Double {
-    val earthRadiusMeters = 6_371_000.0
-    val lat1 = Math.toRadians(latitude)
-    val lat2 = Math.toRadians(other.latitude)
-    val deltaLat = Math.toRadians(other.latitude - latitude)
-    val deltaLon = Math.toRadians(other.longitude - longitude)
-    val haversine = sin(deltaLat / 2).pow(2) +
-        cos(lat1) * cos(lat2) * sin(deltaLon / 2).pow(2)
-    return earthRadiusMeters * 2 * atan2(sqrt(haversine), sqrt(1 - haversine))
 }
 
 private fun createBauhausMarkerIcon(context: Context): BitmapDrawable {
