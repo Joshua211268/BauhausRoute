@@ -13,25 +13,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -57,7 +52,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.exifinterface.media.ExifInterface
@@ -71,7 +65,6 @@ import com.example.bauhausroute.ui.theme.BauhausGeometryRed
 import com.example.bauhausroute.ui.theme.BauhausGeometryYellow
 import com.example.bauhausroute.ui.theme.BauhausRed
 import com.example.bauhausroute.ui.theme.BauhausTheme
-import com.example.bauhausroute.ui.theme.BauhausWarmWhite
 import com.example.bauhausroute.ui.theme.ExpressiveAmber
 import com.example.bauhausroute.ui.theme.ExpressiveCoral
 import com.example.bauhausroute.ui.theme.ExpressiveInk
@@ -177,12 +170,6 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    val photoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia()
-    ) { uris ->
-        handlePickedUris(uris)
-    }
-
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
@@ -207,31 +194,14 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
     ) {
         HeaderPanel()
 
-        Row(
+        ExpressiveActionButton(
+            text = if (isParsing) "PARSING" else "IMPORT HEIF",
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            ExpressiveActionButton(
-                text = if (isParsing) "PARSING" else "PHOTOS",
-                onClick = {
-                    photoPicker.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                    )
-                },
-                enabled = !isParsing,
-                modifier = Modifier.weight(1f)
-            )
-
-            ExpressiveActionButton(
-                text = "HEIF",
-                onClick = {
-                    filePicker.launch(arrayOf("image/*", "image/heic", "image/heif"))
-                },
-                enabled = !isParsing,
-                modifier = Modifier.weight(1f),
-                containerColor = ExpressivePeach
-            )
-        }
+            onClick = {
+                filePicker.launch(arrayOf("image/heic", "image/heif"))
+            },
+            enabled = !isParsing
+        )
 
         StatusPanel(
             selectedCount = selectedCount,
@@ -252,8 +222,7 @@ fun RouteDiscoveryScreen(modifier: Modifier = Modifier) {
                 shape = RoundedCornerShape(30.dp),
                 color = ExpressiveSurface,
                 tonalElevation = 6.dp,
-                shadowElevation = 4.dp,
-                border = BorderStroke(2.dp, ExpressiveInk)
+                shadowElevation = 4.dp
             ) {
                 BauhausRouteMap(
                     stopPoints = route?.orderedStops ?: fallbackStops,
@@ -371,8 +340,7 @@ fun SummaryChip(
 ) {
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = color,
-        border = BorderStroke(1.dp, if (invert) color else ExpressiveInk)
+        color = color
     ) {
         Text(
             text = text,
@@ -416,8 +384,7 @@ fun DebugPanel(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        color = ExpressiveSurface.copy(alpha = 0.92f),
-        border = BorderStroke(1.dp, ExpressivePeach)
+        color = ExpressiveSurface.copy(alpha = 0.92f)
     ) {
         LazyColumn(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
@@ -528,32 +495,6 @@ fun BauhausRouteMap(
 }
 
 @Composable
-fun BauhausPhotoButton(
-    text: String,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    borderWidth: Dp = 2.dp
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .border(BorderStroke(borderWidth, BauhausCarbonBlack))
-            .background(if (enabled) BauhausYellowButtonColor else BauhausWarmWhite)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 20.dp)
-    ) {
-        Text(
-            text = text,
-            color = BauhausCarbonBlack,
-            style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(top = 16.dp)
-        )
-    }
-}
-
-@Composable
 fun ExpressiveActionButton(
     text: String,
     onClick: () -> Unit,
@@ -567,7 +508,6 @@ fun ExpressiveActionButton(
             .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(999.dp),
         color = if (enabled) containerColor else ExpressivePeach.copy(alpha = 0.7f),
-        border = BorderStroke(2.dp, ExpressiveInk),
         shadowElevation = 2.dp
     ) {
         Box(
@@ -582,8 +522,6 @@ fun ExpressiveActionButton(
         }
     }
 }
-
-private val BauhausYellowButtonColor = Color(0xFFF2B705)
 
 private data class GeoParseResult(
     val points: List<GeoPointData>,
