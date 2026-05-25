@@ -15,6 +15,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.provider.OpenableColumns
@@ -24,7 +25,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.core.content.ContextCompat
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -56,6 +60,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -107,10 +115,16 @@ import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import com.example.bauhausroute.ui.theme.BauhausTheme
 import com.example.bauhausroute.ui.theme.ExpressiveAmber
 import com.example.bauhausroute.ui.theme.ExpressiveInk
 import com.example.bauhausroute.ui.theme.ExpressiveMuted
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.launch
@@ -177,11 +191,18 @@ private data class FlightAdvice(
 )
 
 private enum class DashboardTab(
-    val label: String
+    val label: String,
+    val route: String
 ) {
-    Home("首頁"),
-    Status("狀態"),
-    Settings("設定")
+    Home("首頁", "home"),
+    Status("狀態", "status"),
+    Settings("設定", "settings")
+}
+
+private object MainRoutes {
+    const val DetailPattern = "detail/{farmlandId}"
+
+    fun detail(farmlandId: Long): String = "detail/$farmlandId"
 }
 
 private enum class AuthRoute {
@@ -259,6 +280,16 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
                     farmer = profile
                     route = AuthRoute.Main
                 }
+            },
+            onSkipLogin = {
+                farmer = FarmerProfile(
+                    name = "測試使用者",
+                    phone = "",
+                    email = "tester@local",
+                    password = "",
+                    address = ""
+                )
+                route = AuthRoute.Main
             },
             onRegisterClick = { route = AuthRoute.Register },
             modifier = modifier
@@ -377,6 +408,7 @@ private fun RoleCard(
 @Composable
 private fun LoginScreen(
     onLogin: (String, String) -> Unit,
+    onSkipLogin: () -> Unit,
     onRegisterClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -432,6 +464,9 @@ private fun LoginScreen(
         )
         TextButton(onClick = onRegisterClick) {
             Text(text = "建立農民帳號", color = DeepGreen, fontWeight = FontWeight.Bold)
+        }
+        TextButton(onClick = onSkipLogin) {
+            Text(text = "跳過登入（測試用）", color = ExpressiveMuted, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -674,6 +709,7 @@ private fun LeafLogo(modifier: Modifier = Modifier) {
 }
 
 @Composable
+@OptIn(ExperimentalSharedTransitionApi::class)
 fun RouteDiscoveryScreen(
     farmer: FarmerProfile? = null,
     modifier: Modifier = Modifier
@@ -691,8 +727,10 @@ fun RouteDiscoveryScreen(
     var isRouting by remember { mutableStateOf(false) }
     var roadRoute by remember { mutableStateOf<RoadRouteResult?>(null) }
     var weather by remember { mutableStateOf(createLocalWeather(null, farmer?.address)) }
-    var selectedTab by remember { mutableStateOf(DashboardTab.Home) }
-    var selectedFarmlandId by remember { mutableStateOf<Long?>(null) }
+    val navController = rememberNavController()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route ?: DashboardTab.Home.route
+    val selectedTab = currentRoute.toDashboardTab()
     val farmerAddress = farmer?.address.orEmpty()
 
     fun refreshWeatherFromDeviceLocation() {
@@ -826,42 +864,79 @@ fun RouteDiscoveryScreen(
             }
 
             Box(modifier = Modifier.weight(1f)) {
-                when (selectedTab) {
-                    DashboardTab.Home -> RouteCard(
-                        stops = stops,
-                        points = displayRoutePoints,
-                        roadRoute = roadRoute,
-                        isRouting = isRouting,
-                        missingGpsCount = missingGpsCount,
-                        readErrorCount = readErrorCount,
-                        diagnostics = diagnostics,
-                        priorityMarkers = priorityMarkers,
-                        onStopClick = { farmlandId ->
-                            selectedFarmlandId = farmlandId
-                            selectedTab = DashboardTab.Status
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                SharedTransitionLayout {
+                    NavHost(
+                        navController = navController,
+                        startDestination = DashboardTab.Home.route,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        composable(DashboardTab.Home.route) {
+                            RouteCard(
+                                stops = stops,
+                                points = displayRoutePoints,
+                                roadRoute = roadRoute,
+                                isRouting = isRouting,
+                                missingGpsCount = missingGpsCount,
+                                readErrorCount = readErrorCount,
+                                diagnostics = diagnostics,
+                                priorityMarkers = priorityMarkers,
+                                onStopClick = { farmlandId ->
+                                    navController.navigate(MainRoutes.detail(farmlandId))
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
-                    DashboardTab.Status -> StatusScene(
-                        dao = farmlandDao,
-                        farmlands = farmlands,
-                        selectedFarmlandId = selectedFarmlandId,
-                        onFarmlandSelected = { selectedFarmlandId = it },
-                        onBackToGrid = { selectedFarmlandId = null },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                        composable(DashboardTab.Status.route) {
+                            StatusScene(
+                                dao = farmlandDao,
+                                farmlands = farmlands,
+                                onFarmlandSelected = { farmlandId ->
+                                    navController.navigate(MainRoutes.detail(farmlandId))
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
-                    DashboardTab.Settings -> SettingsScene(
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                        composable(DashboardTab.Settings.route) {
+                            SettingsScene(
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        composable(MainRoutes.DetailPattern) { entry ->
+                            val farmlandId = entry.arguments?.getString("farmlandId")?.toLongOrNull()
+                            val farmland = farmlands.firstOrNull { it.id == farmlandId }
+                            if (farmland == null) {
+                                MissingFarmlandScene(
+                                    onBack = { navController.popBackStack() },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } else {
+                                FarmlandDetailScene(
+                                    dao = farmlandDao,
+                                    farmland = farmland,
+                                    onBack = { navController.popBackStack() },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
 
         BottomNavigationBar(
             selectedTab = selectedTab,
-            onTabSelected = { selectedTab = it }
+            onTabSelected = { tab ->
+                navController.navigate(tab.route) {
+                    popUpTo(DashboardTab.Home.route) {
+                        saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
         )
     }
 }
@@ -908,6 +983,15 @@ private fun DashboardHeader(
                 )
             }
         }
+    }
+}
+
+private fun String.toDashboardTab(): DashboardTab {
+    return when (this) {
+        DashboardTab.Status.route,
+        MainRoutes.DetailPattern -> DashboardTab.Status
+        DashboardTab.Settings.route -> DashboardTab.Settings
+        else -> DashboardTab.Home
     }
 }
 
@@ -1371,23 +1455,10 @@ private fun SummaryPill(
 private fun StatusScene(
     dao: FarmlandInspectionDao,
     farmlands: List<FarmlandInspectionEntity>,
-    selectedFarmlandId: Long?,
     onFarmlandSelected: (Long) -> Unit,
-    onBackToGrid: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
-    val selectedFarmland = farmlands.firstOrNull { it.id == selectedFarmlandId }
-
-    if (selectedFarmland != null) {
-        FarmlandDetailScene(
-            dao = dao,
-            farmland = selectedFarmland,
-            onBack = onBackToGrid,
-            modifier = modifier
-        )
-        return
-    }
 
     GlassPanel(modifier = modifier.fillMaxHeight()) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -1460,6 +1531,37 @@ private fun AddFarmlandButton(onClick: () -> Unit) {
 }
 
 @Composable
+private fun MissingFarmlandScene(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    GlassPanel(modifier = modifier.fillMaxHeight()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "找不到巡檢紀錄",
+                color = ExpressiveInk,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Black
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "該筆資料可能已被刪除。",
+                color = ExpressiveMuted,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+            MintButton(text = "返回狀態頁", enabled = true, onClick = onBack)
+        }
+    }
+}
+
+@Composable
 private fun EmptyFarmlandState(
     onAddClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -1499,7 +1601,7 @@ private fun FarmlandGridCard(
             .padding(8.dp)
     ) {
         FarmlandImage(
-            imageUri = farmland.imageUri,
+            imageUri = farmland.coverImageUri,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1.22f)
@@ -1533,6 +1635,29 @@ private fun FarmlandDetailScene(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val detailImages = farmland.detailImages
+    val pagerState = rememberPagerState(
+        initialPage = (detailImages.size - 1).coerceAtLeast(0),
+        pageCount = { detailImages.size.coerceAtLeast(1) }
+    )
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            persistImageReadPermission(context, uri)
+            scope.launch {
+                val updatedImages = (detailImages + uri.toString()).distinct()
+                dao.updateDetailImages(farmland.id, updatedImages)
+                Toast.makeText(context, "已加入新巡檢圖片", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    LaunchedEffect(detailImages.size) {
+        if (detailImages.isNotEmpty()) {
+            pagerState.animateScrollToPage(detailImages.lastIndex)
+        }
+    }
 
     GlassPanel(modifier = modifier.fillMaxHeight()) {
         LazyColumn(
@@ -1559,8 +1684,9 @@ private fun FarmlandDetailScene(
             }
 
             item {
-                FarmlandImage(
-                    imageUri = farmland.imageUri,
+                FarmlandImagePager(
+                    imageUris = detailImages,
+                    pagerState = pagerState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(220.dp)
@@ -1583,6 +1709,13 @@ private fun FarmlandDetailScene(
                             style = MaterialTheme.typography.labelLarge
                         )
                     }
+                    AddDetailImageButton(
+                        onClick = {
+                            imagePicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
+                    )
                     Text(
                         text = farmland.coordinateLabel(),
                         color = ExpressiveMuted,
@@ -1720,6 +1853,50 @@ private fun DeleteFarmlandButton(onClick: () -> Unit) {
 }
 
 @Composable
+private fun AddDetailImageButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .padding(horizontal = 10.dp)
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(MintGreen)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(23.dp)) {
+            val strokeWidth = 2.2.dp.toPx()
+            drawRoundRect(
+                color = DeepGreen,
+                topLeft = Offset(size.width * 0.12f, size.height * 0.28f),
+                size = Size(size.width * 0.62f, size.height * 0.52f),
+                style = Stroke(width = strokeWidth),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx(), 4.dp.toPx())
+            )
+            drawCircle(
+                color = DeepGreen,
+                radius = size.minDimension * 0.11f,
+                center = Offset(size.width * 0.43f, size.height * 0.54f),
+                style = Stroke(width = strokeWidth)
+            )
+            drawLine(
+                color = DeepGreen,
+                start = Offset(size.width * 0.84f, size.height * 0.36f),
+                end = Offset(size.width * 0.84f, size.height * 0.74f),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = DeepGreen,
+                start = Offset(size.width * 0.65f, size.height * 0.55f),
+                end = Offset(size.width * 1.03f, size.height * 0.55f),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+@Composable
 private fun InspectionIndicator(
     icon: String,
     label: String,
@@ -1792,12 +1969,7 @@ private fun AddFarmlandDialog(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }
+            persistImageReadPermission(context, uri)
             imageUri = uri
         }
     }
@@ -1817,7 +1989,8 @@ private fun AddFarmlandDialog(
                         dao.insert(
                             FarmlandInspectionEntity(
                                 regionName = regionName.trim(),
-                                imageUri = pickedUri.toString(),
+                                coverImageUri = pickedUri.toString(),
+                                detailImages = emptyList(),
                                 latitude = point?.latitude,
                                 longitude = point?.longitude,
                                 severity = severityForTrashCount(trashCount),
@@ -1864,20 +2037,60 @@ private fun AddFarmlandDialog(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun FarmlandImagePager(
+    imageUris: List<String>,
+    pagerState: PagerState,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier.background(MintGreen)) {
+        if (imageUris.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "尚未加入圖片", color = DeepGreen, style = MaterialTheme.typography.labelLarge)
+            }
+        } else {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                FarmlandImage(
+                    imageUri = imageUris[page],
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                imageUris.forEachIndexed { index, _ ->
+                    Box(
+                        modifier = Modifier
+                            .size(if (index == pagerState.currentPage) 8.dp else 6.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (index == pagerState.currentPage) Color.White else Color.White.copy(alpha = 0.54f)
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun FarmlandImage(
-    imageUri: String,
+    imageUri: String?,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val bitmap = remember(imageUri) {
-        runCatching {
-            context.contentResolver.openInputStream(Uri.parse(imageUri))?.use { stream ->
-                BitmapFactory.decodeStream(stream)
-            }
-        }.getOrNull()
-    }
 
-    if (bitmap == null) {
+    if (imageUri.isNullOrBlank()) {
         Box(
             modifier = modifier.background(MintGreen),
             contentAlignment = Alignment.Center
@@ -1885,12 +2098,36 @@ private fun FarmlandImage(
             Text(text = "無法讀取圖片", color = DeepGreen, style = MaterialTheme.typography.labelLarge)
         }
     } else {
-        Image(
-            bitmap = bitmap.asImageBitmap(),
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.Crop
-        )
+        var fallbackBitmap by remember(imageUri) { mutableStateOf<Bitmap?>(null) }
+
+        if (fallbackBitmap != null) {
+            Image(
+                bitmap = fallbackBitmap!!.asImageBitmap(),
+                contentDescription = null,
+                modifier = modifier,
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(Uri.parse(imageUri))
+                    .crossfade(true)
+                    .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                    .listener(
+                        onError = { _, _ ->
+                            fallbackBitmap = runCatching {
+                                context.contentResolver.openInputStream(Uri.parse(imageUri))?.use { stream ->
+                                    BitmapFactory.decodeStream(stream)
+                                }
+                            }.getOrNull()
+                        }
+                    )
+                    .build(),
+                contentDescription = null,
+                modifier = modifier,
+                contentScale = ContentScale.Crop
+            )
+        }
     }
 }
 
@@ -2343,6 +2580,18 @@ private fun FarmlandInspectionEntity.coordinateLabel(): String {
         "無法讀取"
     } else {
         "%.4f, %.4f".format(latitude, longitude)
+    }
+}
+
+private fun persistImageReadPermission(
+    context: Context,
+    uri: Uri
+) {
+    runCatching {
+        context.contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION
+        )
     }
 }
 
