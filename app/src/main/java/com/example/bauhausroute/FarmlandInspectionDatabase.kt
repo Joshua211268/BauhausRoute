@@ -34,6 +34,20 @@ data class FarmlandInspectionEntity(
     val timestampMillis: Long
 )
 
+@Entity(tableName = "TeamProfile")
+data class TeamProfileEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val teamName: String,
+    val contactName: String,
+    val phone: String,
+    val email: String,
+    val teamSize: Int,
+    val city: String,
+    val district: String,
+    val createdAtMillis: Long
+)
+
 @Dao
 interface FarmlandInspectionDao {
     @Query("SELECT * FROM farmland_inspections ORDER BY timestampMillis DESC")
@@ -52,6 +66,12 @@ interface FarmlandInspectionDao {
     suspend fun updateDetailImages(id: Long, detailImages: List<String>)
 }
 
+@Dao
+interface TeamProfileDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: TeamProfileEntity)
+}
+
 class StringListConverter {
     @TypeConverter
     fun fromStringList(value: List<String>): String {
@@ -66,13 +86,14 @@ class StringListConverter {
 }
 
 @Database(
-    entities = [FarmlandInspectionEntity::class],
-    version = 3,
+    entities = [FarmlandInspectionEntity::class, TeamProfileEntity::class],
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(StringListConverter::class)
 abstract class FarmlandInspectionDatabase : RoomDatabase() {
     abstract fun farmlandInspectionDao(): FarmlandInspectionDao
+    abstract fun teamProfileDao(): TeamProfileDao
 
     companion object {
         @Volatile
@@ -85,7 +106,7 @@ abstract class FarmlandInspectionDatabase : RoomDatabase() {
                     FarmlandInspectionDatabase::class.java,
                     "farmland_inspections.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }
@@ -148,6 +169,26 @@ abstract class FarmlandInspectionDatabase : RoomDatabase() {
                 )
                 db.execSQL("DROP TABLE farmland_inspections")
                 db.execSQL("ALTER TABLE farmland_inspections_new RENAME TO farmland_inspections")
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS TeamProfile (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        teamName TEXT NOT NULL,
+                        contactName TEXT NOT NULL,
+                        phone TEXT NOT NULL,
+                        email TEXT NOT NULL,
+                        teamSize INTEGER NOT NULL,
+                        city TEXT NOT NULL,
+                        district TEXT NOT NULL,
+                        createdAtMillis INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
             }
         }
     }

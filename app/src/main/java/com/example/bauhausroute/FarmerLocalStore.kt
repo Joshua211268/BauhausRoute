@@ -2,12 +2,19 @@ package com.example.bauhausroute
 
 import android.content.Context
 
+enum class UserRole {
+    FARMER,
+    CLEANER,
+    ADMIN
+}
+
 data class FarmerProfile(
     val name: String,
     val phone: String,
     val email: String,
     val password: String,
-    val address: String
+    val address: String,
+    val role: UserRole = UserRole.FARMER
 )
 
 class FarmerLocalStore(context: Context) {
@@ -27,6 +34,7 @@ class FarmerLocalStore(context: Context) {
             .putString("$id.email", normalizedEmail)
             .putString("$id.password", profile.password)
             .putString("$id.address", profile.address.trim())
+            .putString("$id.role", profile.role.name)
             .apply()
     }
 
@@ -47,11 +55,19 @@ class FarmerLocalStore(context: Context) {
             phone = preferences.getString("$matchedId.phone", "").orEmpty(),
             email = preferences.getString("$matchedId.email", "").orEmpty(),
             password = savedPassword,
-            address = preferences.getString("$matchedId.address", "").orEmpty()
+            address = preferences.getString("$matchedId.address", "").orEmpty(),
+            role = preferences.getString("$matchedId.role", UserRole.FARMER.name)
+                .toUserRole()
         )
     }
 
     companion object {
         private const val KEY_FARMERS = "farmers"
     }
+}
+
+private fun String?.toUserRole(): UserRole {
+    return runCatching {
+        UserRole.valueOf(this ?: UserRole.FARMER.name)
+    }.getOrDefault(UserRole.FARMER)
 }

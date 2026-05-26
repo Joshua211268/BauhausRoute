@@ -64,13 +64,17 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -190,6 +194,12 @@ private data class FlightAdvice(
     val contentColor: Color
 )
 
+private enum class InspectionFilter(val label: String) {
+    All("全部"),
+    HasTrash("有垃圾"),
+    NoTrash("無垃圾")
+}
+
 private enum class DashboardTab(
     val label: String,
     val route: String
@@ -206,9 +216,10 @@ private object MainRoutes {
 }
 
 private enum class AuthRoute {
-    Welcome,
     Login,
+    RoleSelection,
     Register,
+    CleanerRegister,
     Main
 }
 
@@ -262,15 +273,13 @@ private fun GlassAppBackground(content: @Composable () -> Unit) {
 private fun FarmerAuthApp(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val store = remember { FarmerLocalStore(context) }
-    var route by remember { mutableStateOf(AuthRoute.Welcome) }
+    val scope = rememberCoroutineScope()
+    val database = remember { FarmlandInspectionDatabase.get(context) }
+    val teamProfileDao = remember(database) { database.teamProfileDao() }
+    var route by remember { mutableStateOf(AuthRoute.Login) }
     var farmer by remember { mutableStateOf<FarmerProfile?>(null) }
 
     when (route) {
-        AuthRoute.Welcome -> WelcomeScreen(
-            onFarmerClick = { route = AuthRoute.Login },
-            modifier = modifier
-        )
-
         AuthRoute.Login -> LoginScreen(
             onLogin = { account, password ->
                 val profile = store.login(account, password)
@@ -287,20 +296,59 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
                     phone = "",
                     email = "tester@local",
                     password = "",
-                    address = ""
+                    address = "",
+                    role = UserRole.FARMER
                 )
                 route = AuthRoute.Main
             },
-            onRegisterClick = { route = AuthRoute.Register },
+            onRegisterClick = { route = AuthRoute.RoleSelection },
+            modifier = modifier
+        )
+
+        AuthRoute.RoleSelection -> RoleSelectionScreen(
+            onBack = { route = AuthRoute.Login },
+            onFarmerClick = { route = AuthRoute.Register },
+            onCleanerClick = { route = AuthRoute.CleanerRegister },
             modifier = modifier
         )
 
         AuthRoute.Register -> RegisterScreen(
-            onBack = { route = AuthRoute.Login },
+            onBack = { route = AuthRoute.RoleSelection },
             onRegister = { profile ->
-                store.register(profile)
+                store.register(profile.copy(role = UserRole.FARMER))
                 Toast.makeText(context, "註冊成功，請登入", Toast.LENGTH_SHORT).show()
                 route = AuthRoute.Login
+            },
+            modifier = modifier
+        )
+
+        AuthRoute.CleanerRegister -> CleanerTeamRegisterScreen(
+            onBack = { route = AuthRoute.RoleSelection },
+            onSkip = {
+                farmer = FarmerProfile(
+                    name = "清潔團隊測試",
+                    phone = "",
+                    email = "cleaner@local",
+                    password = "",
+                    address = "",
+                    role = UserRole.CLEANER
+                )
+                route = AuthRoute.Main
+            },
+            onRegister = { profile ->
+                scope.launch {
+                    teamProfileDao.insert(profile)
+                    farmer = FarmerProfile(
+                        name = profile.contactName,
+                        phone = profile.phone,
+                        email = profile.email,
+                        password = "",
+                        address = "${profile.city}${profile.district}",
+                        role = UserRole.CLEANER
+                    )
+                    Toast.makeText(context, "清潔團隊註冊完成", Toast.LENGTH_SHORT).show()
+                    route = AuthRoute.Main
+                }
             },
             modifier = modifier
         )
@@ -313,52 +361,78 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun WelcomeScreen(
+private fun RoleSelectionScreen(
+    onBack: () -> Unit,
     onFarmerClick: () -> Unit,
+    onCleanerClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .background(Color.White)
+            .padding(horizontal = 28.dp)
     ) {
-        LeafLogo(
+        IconButton(
+            onClick = onBack,
             modifier = Modifier
-                .size(84.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(MintGreen)
-                .padding(18.dp)
-        )
-        Spacer(modifier = Modifier.height(22.dp))
-        Text(
-            text = "農地巡檢系統",
-            color = ExpressiveInk,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Black
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "無人機智慧巡檢・垃圾偵測分析",
-            color = ExpressiveMuted,
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(54.dp))
-        Text(
-            text = "請選擇您的身分",
-            color = ExpressiveInk,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(22.dp))
-        RoleCard(
-            title = "農民",
-            subtitle = "查看農地巡檢結果與管理農地",
-            accent = LeafGreen,
-            onClick = onFarmerClick
-        )
+                .padding(top = 14.dp)
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFF3F6F4))
+                .align(Alignment.TopStart)
+        ) {
+            Text(text = "<", color = ExpressiveInk, style = MaterialTheme.typography.titleLarge)
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 118.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            LeafLogo(
+                modifier = Modifier
+                    .size(74.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(MintGreen)
+                    .padding(16.dp)
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+            Text(
+                text = "農地巡檢系統",
+                color = ExpressiveInk,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Black
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "無人機智慧巡檢・垃圾偵測分析",
+                color = ExpressiveMuted,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(58.dp))
+            Text(
+                text = "請選擇您的身分",
+                color = ExpressiveInk,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(22.dp))
+            RoleCard(
+                title = "農民",
+                subtitle = "查看農地巡檢結果與管理農地",
+                accent = LeafGreen,
+                onClick = onFarmerClick
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            RoleCard(
+                title = "清潔團隊",
+                subtitle = "查看所有農地狀態與路徑規劃",
+                accent = Color(0xFFFF9F43),
+                onClick = onCleanerClick
+            )
+        }
     }
 }
 
@@ -416,57 +490,81 @@ private fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .background(Color(0xFFF8FAFD))
+            .padding(horizontal = 24.dp)
     ) {
-        Text(
-            text = "農民登入",
-            color = ExpressiveInk,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Black
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "請輸入電話或電子郵件",
-            color = ExpressiveMuted,
-            style = MaterialTheme.typography.bodyMedium
-        )
-        Spacer(modifier = Modifier.height(28.dp))
-        MintTextField(
-            value = account,
-            onValueChange = { account = it },
-            label = "帳號",
-            keyboardType = KeyboardType.Email
-        )
-        Spacer(modifier = Modifier.height(14.dp))
-        MintTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = "密碼",
-            keyboardType = KeyboardType.Password,
-            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = {
-                EyeToggleButton(
-                    visible = showPassword,
-                    onClick = { showPassword = !showPassword }
-                )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            LeafLogo(
+                modifier = Modifier
+                    .size(76.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(MintGreen)
+                    .padding(16.dp)
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+            Text(
+                text = "農地巡檢系統",
+                color = ExpressiveInk,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Black
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "無人機智慧巡檢・垃圾偵測分析",
+                color = ExpressiveMuted,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(modifier = Modifier.height(34.dp))
+            MintTextField(
+                value = account,
+                onValueChange = { account = it },
+                label = "EMAIL",
+                keyboardType = KeyboardType.Email
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            MintTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = "PASSWORD",
+                keyboardType = KeyboardType.Password,
+                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    EyeToggleButton(
+                        visible = showPassword,
+                        onClick = { showPassword = !showPassword }
+                    )
+                }
+            )
+            Spacer(modifier = Modifier.height(26.dp))
+            MintButton(
+                text = "登入",
+                enabled = account.isNotBlank() && password.isNotBlank(),
+                onClick = { onLogin(account, password) }
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            TextButton(onClick = {}) {
+                Text(text = "忘記密碼？", color = DeepGreen, fontWeight = FontWeight.Bold)
             }
-        )
-        Spacer(modifier = Modifier.height(26.dp))
-        MintButton(
-            text = "登入",
-            enabled = account.isNotBlank() && password.isNotBlank(),
-            onClick = { onLogin(account, password) }
-        )
-        TextButton(onClick = onRegisterClick) {
-            Text(text = "建立農民帳號", color = DeepGreen, fontWeight = FontWeight.Bold)
+            TextButton(onClick = onRegisterClick) {
+                Text(text = "還沒有帳號？ 立即註冊", color = DeepGreen, fontWeight = FontWeight.Bold)
+            }
         }
-        TextButton(onClick = onSkipLogin) {
-            Text(text = "跳過登入（測試用）", color = ExpressiveMuted, fontWeight = FontWeight.Bold)
+        TextButton(
+            onClick = onSkipLogin,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 18.dp)
+        ) {
+            Text(text = "略過 (Skip)", color = ExpressiveMuted, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -573,6 +671,232 @@ private fun RegisterScreen(
     }
 }
 
+private val TaiwanDistricts = linkedMapOf(
+    "台北市" to listOf("中正區", "大同區", "中山區", "松山區", "大安區", "信義區", "士林區", "北投區"),
+    "新北市" to listOf("板橋區", "新莊區", "中和區", "永和區", "三重區", "新店區", "淡水區", "汐止區"),
+    "桃園市" to listOf("桃園區", "中壢區", "平鎮區", "八德區", "楊梅區", "蘆竹區", "大溪區"),
+    "台中市" to listOf("中區", "東區", "南區", "西區", "北區", "西屯區", "南屯區", "北屯區"),
+    "台南市" to listOf("中西區", "東區", "南區", "北區", "安平區", "安南區", "永康區"),
+    "高雄市" to listOf("新興區", "前金區", "苓雅區", "鹽埕區", "鼓山區", "左營區", "三民區"),
+    "嘉義縣" to listOf("太保市", "朴子市", "民雄鄉", "水上鄉", "中埔鄉", "竹崎鄉"),
+    "屏東縣" to listOf("屏東市", "潮州鎮", "東港鎮", "恆春鎮", "萬丹鄉", "內埔鄉")
+)
+
+@Composable
+private fun CleanerTeamRegisterScreen(
+    onBack: () -> Unit,
+    onSkip: () -> Unit,
+    onRegister: (TeamProfileEntity) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var teamName by remember { mutableStateOf("") }
+    var contactName by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var teamSize by remember { mutableStateOf(5) }
+    var city by remember { mutableStateOf("") }
+    var district by remember { mutableStateOf("") }
+    val districts = TaiwanDistricts[city].orEmpty()
+    val canSubmit = teamName.isNotBlank() &&
+        contactName.isNotBlank() &&
+        phone.isNotBlank() &&
+        email.isNotBlank() &&
+        city.isNotBlank() &&
+        district.isNotBlank()
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xFFF7F8FC))
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 22.dp, vertical = 18.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+            ) {
+                Text(text = "<", color = ExpressiveInk, style = MaterialTheme.typography.titleLarge)
+            }
+            Column(modifier = Modifier.padding(start = 10.dp)) {
+                Text(
+                    text = "清潔團隊註冊",
+                    color = ExpressiveInk,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black
+                )
+                Text(text = "填寫團隊基本資料", color = ExpressiveMuted, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        FormLabel("團隊名稱 *")
+        MintTextField(value = teamName, onValueChange = { teamName = it }, label = "例：綠淨清潔隊")
+        FormLabel("聯絡人姓名 *")
+        MintTextField(value = contactName, onValueChange = { contactName = it }, label = "請輸入姓名")
+        FormLabel("電話 *")
+        MintTextField(value = phone, onValueChange = { phone = it }, label = "0912-345-678", keyboardType = KeyboardType.Phone)
+        FormLabel("信箱")
+        MintTextField(value = email, onValueChange = { email = it }, label = "team@email.com", keyboardType = KeyboardType.Email)
+        FormLabel("團隊人數")
+        TeamSizeStepper(
+            value = teamSize,
+            onValueChange = { teamSize = it },
+            modifier = Modifier.fillMaxWidth()
+        )
+        FormLabel("服務區域 *")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AreaDropdown(
+                value = city,
+                placeholder = "選擇縣市",
+                options = TaiwanDistricts.keys.toList(),
+                onSelected = {
+                    city = it
+                    district = ""
+                },
+                modifier = Modifier.weight(1f)
+            )
+            AreaDropdown(
+                value = district,
+                placeholder = "選擇區",
+                options = districts,
+                enabled = city.isNotBlank(),
+                onSelected = { district = it },
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(modifier = Modifier.height(44.dp))
+        MintButton(
+            text = "完成註冊",
+            enabled = canSubmit,
+            onClick = {
+                onRegister(
+                    TeamProfileEntity(
+                        teamName = teamName.trim(),
+                        contactName = contactName.trim(),
+                        phone = phone.trim(),
+                        email = email.trim().lowercase(),
+                        teamSize = teamSize,
+                        city = city,
+                        district = district,
+                        createdAtMillis = System.currentTimeMillis()
+                    )
+                )
+            }
+        )
+        TextButton(
+            onClick = onSkip,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(text = "略過 (Skip)", color = ExpressiveMuted, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun TeamSizeStepper(
+    value: Int,
+    onValueChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .height(52.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White)
+            .border(1.dp, Color(0xFFE3E6EA), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "$value 人",
+            color = ExpressiveInk,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f)
+        )
+        StepperButton(text = "-", enabled = value > 1, onClick = { onValueChange(value - 1) })
+        Spacer(modifier = Modifier.width(6.dp))
+        StepperButton(text = "+", enabled = value < 99, onClick = { onValueChange(value + 1) })
+    }
+}
+
+@Composable
+private fun StepperButton(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(width = 42.dp, height = 30.dp),
+        shape = RoundedCornerShape(999.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFFE9ECEF),
+            contentColor = ExpressiveInk,
+            disabledContainerColor = Color(0xFFF2F4F6),
+            disabledContentColor = ExpressiveMuted.copy(alpha = 0.38f)
+        ),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+    ) {
+        Text(text = text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+    }
+}
+
+@Composable
+private fun AreaDropdown(
+    value: String,
+    placeholder: String,
+    options: List<String>,
+    onSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (enabled) Color.White else Color.White.copy(alpha = 0.58f))
+                .border(1.dp, Color(0xFFE3E6EA), RoundedCornerShape(16.dp))
+                .clickable(enabled = enabled && options.isNotEmpty()) { expanded = true }
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = value.ifBlank { placeholder },
+                color = if (value.isBlank()) ExpressiveMuted.copy(alpha = 0.48f) else DeepGreen,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(text = "⌄", color = ExpressiveMuted, style = MaterialTheme.typography.titleMedium)
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onSelected(option)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun FormLabel(text: String) {
     Text(
@@ -602,7 +926,7 @@ private fun MintTextField(
             .height(58.dp),
         placeholder = { Text(text = label, color = ExpressiveMuted.copy(alpha = 0.42f)) },
         singleLine = true,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = Color.White,
             unfocusedContainerColor = Color.White.copy(alpha = 0.78f),
@@ -634,7 +958,7 @@ private fun MintButton(
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = DeepGreen,
             contentColor = Color.White,
@@ -727,11 +1051,19 @@ fun RouteDiscoveryScreen(
     var isRouting by remember { mutableStateOf(false) }
     var roadRoute by remember { mutableStateOf<RoadRouteResult?>(null) }
     var weather by remember { mutableStateOf(createLocalWeather(null, farmer?.address)) }
+    var farmerFilter by remember { mutableStateOf(InspectionFilter.All) }
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: DashboardTab.Home.route
     val selectedTab = currentRoute.toDashboardTab()
     val farmerAddress = farmer?.address.orEmpty()
+    val currentRole = farmer?.role ?: UserRole.FARMER
+    val canUseCleanerTools = currentRole == UserRole.CLEANER || currentRole == UserRole.ADMIN
+    val availableTabs = if (canUseCleanerTools) {
+        DashboardTab.entries
+    } else {
+        listOf(DashboardTab.Home, DashboardTab.Settings)
+    }
 
     fun refreshWeatherFromDeviceLocation() {
         scope.launch {
@@ -778,7 +1110,7 @@ fun RouteDiscoveryScreen(
         }
     }
 
-    LaunchedEffect(farmerAddress) {
+    LaunchedEffect(farmerAddress, canUseCleanerTools) {
         if (farmerAddress.isNotBlank()) {
             weather = withContext(Dispatchers.IO) {
                 createWeatherSnapshotFromAddress(farmerAddress)
@@ -849,10 +1181,13 @@ fun RouteDiscoveryScreen(
         ) {
             DashboardHeader(
                 onBellClick = {},
+                currentRole = currentRole,
+                userName = farmer?.name,
+                onScanClick = { filePicker.launch(arrayOf("image/heic", "image/heif")) },
                 modifier = Modifier.padding(bottom = 2.dp)
             )
 
-            if (selectedTab == DashboardTab.Home) {
+            if (selectedTab == DashboardTab.Home || (canUseCleanerTools && selectedTab == DashboardTab.Status)) {
                 WeatherCard(
                     weather = weather,
                     flightAdvice = flightAdvice,
@@ -871,31 +1206,57 @@ fun RouteDiscoveryScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         composable(DashboardTab.Home.route) {
-                            RouteCard(
-                                stops = stops,
-                                points = displayRoutePoints,
-                                roadRoute = roadRoute,
-                                isRouting = isRouting,
-                                missingGpsCount = missingGpsCount,
-                                readErrorCount = readErrorCount,
-                                diagnostics = diagnostics,
-                                priorityMarkers = priorityMarkers,
-                                onStopClick = { farmlandId ->
-                                    navController.navigate(MainRoutes.detail(farmlandId))
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            if (canUseCleanerTools) {
+                                RouteCard(
+                                    stops = stops,
+                                    points = displayRoutePoints,
+                                    roadRoute = roadRoute,
+                                    isRouting = isRouting,
+                                    missingGpsCount = missingGpsCount,
+                                    readErrorCount = readErrorCount,
+                                    diagnostics = diagnostics,
+                                    priorityMarkers = priorityMarkers,
+                                    onStopClick = { farmlandId ->
+                                        navController.navigate(MainRoutes.detail(farmlandId))
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } else {
+                                FarmerRoleHome(
+                                    farmer = farmer,
+                                    farmlands = farmlands,
+                                    selectedFilter = farmerFilter,
+                                    onFilterSelected = { farmerFilter = it },
+                                    onFarmlandSelected = { farmlandId ->
+                                        navController.navigate(MainRoutes.detail(farmlandId))
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
 
                         composable(DashboardTab.Status.route) {
-                            StatusScene(
-                                dao = farmlandDao,
-                                farmlands = farmlands,
-                                onFarmlandSelected = { farmlandId ->
-                                    navController.navigate(MainRoutes.detail(farmlandId))
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            if (canUseCleanerTools) {
+                                StatusScene(
+                                    dao = farmlandDao,
+                                    farmlands = farmlands,
+                                    onFarmlandSelected = { farmlandId ->
+                                        navController.navigate(MainRoutes.detail(farmlandId))
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } else {
+                                FarmerRoleHome(
+                                    farmer = farmer,
+                                    farmlands = farmlands,
+                                    selectedFilter = farmerFilter,
+                                    onFilterSelected = { farmerFilter = it },
+                                    onFarmlandSelected = { farmlandId ->
+                                        navController.navigate(MainRoutes.detail(farmlandId))
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
 
                         composable(DashboardTab.Settings.route) {
@@ -928,6 +1289,7 @@ fun RouteDiscoveryScreen(
 
         BottomNavigationBar(
             selectedTab = selectedTab,
+            tabs = availableTabs,
             onTabSelected = { tab ->
                 navController.navigate(tab.route) {
                     popUpTo(DashboardTab.Home.route) {
@@ -944,45 +1306,319 @@ fun RouteDiscoveryScreen(
 @Composable
 private fun DashboardHeader(
     onBellClick: () -> Unit,
+    currentRole: UserRole,
+    userName: String?,
+    onScanClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val title = when (currentRole) {
+        UserRole.FARMER -> "我的農地巡檢"
+        UserRole.CLEANER -> "待處理任務"
+        UserRole.ADMIN -> "系統總覽"
+    }
+    val subtitle = when (currentRole) {
+        UserRole.FARMER -> "${userName?.takeIf { it.isNotBlank() } ?: "使用者"} ，歡迎回來"
+        UserRole.CLEANER -> "查看所有農地狀態與路徑規劃"
+        UserRole.ADMIN -> "管理巡檢、任務與團隊資料"
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(46.dp),
+            .height(58.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "清潔團隊",
+                text = title,
                 color = ExpressiveInk,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
                 maxLines = 1
             )
+            Text(
+                text = subtitle,
+                color = ExpressiveMuted,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
 
+        val actionClick = if (currentRole == UserRole.FARMER) onScanClick else onBellClick
         Surface(
             modifier = Modifier
                 .size(50.dp)
                 .background(Color.White.copy(alpha = 0.54f), CircleShape)
-                .clickable(onClick = onBellClick),
+                .clickable(onClick = actionClick),
             shape = CircleShape,
             color = Color.Transparent,
             shadowElevation = 0.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text(text = "🔔", style = MaterialTheme.typography.titleLarge)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 10.dp, end = 10.dp)
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(WarningRed)
-                )
+                if (currentRole == UserRole.FARMER) {
+                    ScanCameraIcon(
+                        color = DeepGreen,
+                        modifier = Modifier.size(26.dp)
+                    )
+                } else {
+                    Text(text = "!", color = DeepGreen, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 10.dp, end = 10.dp)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(WarningRed)
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun FarmerRoleHome(
+    farmer: FarmerProfile?,
+    farmlands: List<FarmlandInspectionEntity>,
+    selectedFilter: InspectionFilter,
+    onFilterSelected: (InspectionFilter) -> Unit,
+    onFarmlandSelected: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val filteredFarmlands = remember(farmlands, selectedFilter) {
+        when (selectedFilter) {
+            InspectionFilter.All -> farmlands
+            InspectionFilter.HasTrash -> farmlands.filter { it.trashCount > 0 }
+            InspectionFilter.NoTrash -> farmlands.filter { it.trashCount == 0 }
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        FarmerFilterRow(
+            selectedFilter = selectedFilter,
+            allCount = farmlands.size,
+            trashCount = farmlands.count { it.trashCount > 0 },
+            cleanCount = farmlands.count { it.trashCount == 0 },
+            onFilterSelected = onFilterSelected
+        )
+
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(28.dp),
+            color = GlassWhite,
+            shadowElevation = 8.dp
+        ) {
+            if (filteredFarmlands.isEmpty()) {
+                FarmerEmptyInspectionState(modifier = Modifier.fillMaxSize())
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    items(filteredFarmlands, key = { it.id }) { farmland ->
+                        FarmlandGridCard(
+                            farmland = farmland,
+                            onClick = { onFarmlandSelected(farmland.id) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FarmerFilterRow(
+    selectedFilter: InspectionFilter,
+    allCount: Int,
+    trashCount: Int,
+    cleanCount: Int,
+    onFilterSelected: (InspectionFilter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FarmerFilterChip(
+            label = "${InspectionFilter.All.label} ($allCount)",
+            selected = selectedFilter == InspectionFilter.All,
+            onClick = { onFilterSelected(InspectionFilter.All) },
+            modifier = Modifier.weight(1f)
+        )
+        FarmerFilterChip(
+            label = "${InspectionFilter.HasTrash.label} ($trashCount)",
+            selected = selectedFilter == InspectionFilter.HasTrash,
+            onClick = { onFilterSelected(InspectionFilter.HasTrash) },
+            modifier = Modifier.weight(1f)
+        )
+        FarmerFilterChip(
+            label = "${InspectionFilter.NoTrash.label} ($cleanCount)",
+            selected = selectedFilter == InspectionFilter.NoTrash,
+            onClick = { onFilterSelected(InspectionFilter.NoTrash) },
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun FarmerFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) DeepGreen else Color.White.copy(alpha = 0.72f))
+            .border(
+                width = 1.dp,
+                color = if (selected) DeepGreen else GlassStroke,
+                shape = RoundedCornerShape(999.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Color.White else ExpressiveInk,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun FarmerEmptyInspectionState(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.padding(horizontal = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier.size(112.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            AlbumIcon(
+                color = LeafGreen.copy(alpha = 0.52f),
+                modifier = Modifier
+                    .size(82.dp)
+                    .offset(x = (-16).dp, y = 12.dp)
+            )
+            ScanCameraIcon(
+                color = DeepGreen,
+                modifier = Modifier
+                    .size(78.dp)
+                    .offset(x = 14.dp, y = (-8).dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(18.dp))
+        Text(
+            text = "尚無巡檢資料",
+            color = ExpressiveInk,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "無人機巡檢結果將顯示在這裡",
+            color = ExpressiveMuted,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun ScanCameraIcon(
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val strokeWidth = 2.4.dp.toPx()
+        val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * 0.18f, size.height * 0.28f),
+            size = Size(size.width * 0.64f, size.height * 0.5f),
+            style = stroke,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx(), 8.dp.toPx())
+        )
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * 0.31f, size.height * 0.18f),
+            size = Size(size.width * 0.22f, size.height * 0.12f),
+            style = stroke,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx(), 4.dp.toPx())
+        )
+        drawCircle(
+            color = color,
+            radius = size.minDimension * 0.13f,
+            center = Offset(size.width * 0.5f, size.height * 0.53f),
+            style = stroke
+        )
+        listOf(
+            Offset(size.width * 0.08f, size.height * 0.14f) to Offset(size.width * 0.25f, size.height * 0.14f),
+            Offset(size.width * 0.08f, size.height * 0.14f) to Offset(size.width * 0.08f, size.height * 0.31f),
+            Offset(size.width * 0.92f, size.height * 0.14f) to Offset(size.width * 0.75f, size.height * 0.14f),
+            Offset(size.width * 0.92f, size.height * 0.14f) to Offset(size.width * 0.92f, size.height * 0.31f),
+            Offset(size.width * 0.08f, size.height * 0.86f) to Offset(size.width * 0.25f, size.height * 0.86f),
+            Offset(size.width * 0.08f, size.height * 0.86f) to Offset(size.width * 0.08f, size.height * 0.69f),
+            Offset(size.width * 0.92f, size.height * 0.86f) to Offset(size.width * 0.75f, size.height * 0.86f),
+            Offset(size.width * 0.92f, size.height * 0.86f) to Offset(size.width * 0.92f, size.height * 0.69f)
+        ).forEach { (start, end) ->
+            drawLine(color = color, start = start, end = end, strokeWidth = strokeWidth, cap = StrokeCap.Round)
+        }
+    }
+}
+
+@Composable
+private fun AlbumIcon(
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val strokeWidth = 2.6.dp.toPx()
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(size.width * 0.12f, size.height * 0.18f),
+            size = Size(size.width * 0.74f, size.height * 0.64f),
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx(), 10.dp.toPx())
+        )
+        drawCircle(
+            color = color,
+            radius = size.minDimension * 0.08f,
+            center = Offset(size.width * 0.34f, size.height * 0.38f)
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.2f, size.height * 0.72f),
+            end = Offset(size.width * 0.44f, size.height * 0.54f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width * 0.44f, size.height * 0.54f),
+            end = Offset(size.width * 0.78f, size.height * 0.72f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
     }
 }
 
@@ -1465,17 +2101,14 @@ private fun StatusScene(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "巡檢狀態",
-                        color = ExpressiveInk,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.weight(1f)
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     AddFarmlandButton(onClick = { showAddDialog = true })
                 }
 
@@ -2195,6 +2828,7 @@ private fun SettingsRow(
 @Composable
 private fun BottomNavigationBar(
     selectedTab: DashboardTab,
+    tabs: List<DashboardTab> = DashboardTab.entries,
     onTabSelected: (DashboardTab) -> Unit
 ) {
     val density = LocalDensity.current
@@ -2220,7 +2854,7 @@ private fun BottomNavigationBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            DashboardTab.entries.forEach { tab ->
+            tabs.forEach { tab ->
                 BottomNavItem(
                     tab = tab,
                     label = tab.label,
