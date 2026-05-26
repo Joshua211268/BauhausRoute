@@ -19,6 +19,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +28,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.core.content.ContextCompat
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -127,6 +132,9 @@ import com.example.bauhausroute.ui.theme.BauhausTheme
 import com.example.bauhausroute.ui.theme.ExpressiveAmber
 import com.example.bauhausroute.ui.theme.ExpressiveInk
 import com.example.bauhausroute.ui.theme.ExpressiveMuted
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
@@ -140,7 +148,9 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import org.json.JSONObject
 import java.text.SimpleDateFormat
+import java.security.SecureRandom
 import java.util.Date
 import java.util.Locale
 import kotlin.coroutines.resume
@@ -278,6 +288,15 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
     val teamProfileDao = remember(database) { database.teamProfileDao() }
     var route by remember { mutableStateOf(AuthRoute.Login) }
     var farmer by remember { mutableStateOf<FarmerProfile?>(null) }
+    var pendingGoogleAccount by remember { mutableStateOf<GoogleAccountProfile?>(null) }
+    var isSkipRoleSelection by remember { mutableStateOf(false) }
+
+    fun enterWithGoogle(profile: FarmerProfile, googleAccount: GoogleAccountProfile) {
+        store.registerGoogle(profile, googleAccount)
+        pendingGoogleAccount = null
+        farmer = profile
+        route = AuthRoute.Main
+    }
 
     when (route) {
         AuthRoute.Login -> LoginScreen(
@@ -291,23 +310,68 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
                 }
             },
             onSkipLogin = {
-                farmer = FarmerProfile(
-                    name = "測試使用者",
-                    phone = "",
-                    email = "tester@local",
-                    password = "",
-                    address = "",
-                    role = UserRole.FARMER
-                )
-                route = AuthRoute.Main
+                pendingGoogleAccount = null
+                isSkipRoleSelection = true
+                route = AuthRoute.RoleSelection
+            },
+            onGoogleLogin = {
+                scope.launch {
+                    val googleAccount = signInWithGoogle(context)
+                    if (googleAccount == null) {
+                        Toast.makeText(context, "Google 登入尚未完成，請確認 Web client ID 設定", Toast.LENGTH_SHORT).show()
+                        return@launch
+                    }
+
+                    val existingProfile = store.loginGoogle(googleAccount)
+                    if (existingProfile == null) {
+                        pendingGoogleAccount = googleAccount
+                        isSkipRoleSelection = false
+                        route = AuthRoute.RoleSelection
+                    } else {
+                        farmer = existingProfile
+                        route = AuthRoute.Main
+                    }
+                }
             },
             onRegisterClick = { route = AuthRoute.RoleSelection },
             modifier = modifier
         )
 
         AuthRoute.RoleSelection -> RoleSelectionScreen(
-            onBack = { route = AuthRoute.Login },
-            onFarmerClick = { route = AuthRoute.Register },
+            onBack = {
+                isSkipRoleSelection = false
+                pendingGoogleAccount = null
+                route = AuthRoute.Login
+            },
+            onFarmerClick = {
+                val googleAccount = pendingGoogleAccount
+                if (isSkipRoleSelection) {
+                    farmer = FarmerProfile(
+                        name = "農民測試使用者",
+                        phone = "",
+                        email = "farmer.tester@local",
+                        password = "",
+                        address = "",
+                        role = UserRole.FARMER
+                    )
+                    isSkipRoleSelection = false
+                    route = AuthRoute.Main
+                } else if (googleAccount == null) {
+                    route = AuthRoute.Register
+                } else {
+                    enterWithGoogle(
+                        profile = FarmerProfile(
+                            name = googleAccount.displayName.ifBlank { "Google 使用者" },
+                            phone = "",
+                            email = googleAccount.email,
+                            password = "",
+                            address = "",
+                            role = UserRole.FARMER
+                        ),
+                        googleAccount = googleAccount
+                    )
+                }
+            },
             onCleanerClick = { route = AuthRoute.CleanerRegister },
             modifier = modifier
         )
@@ -325,20 +389,26 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
         AuthRoute.CleanerRegister -> CleanerTeamRegisterScreen(
             onBack = { route = AuthRoute.RoleSelection },
             onSkip = {
+                val googleAccount = pendingGoogleAccount
                 farmer = FarmerProfile(
-                    name = "清潔團隊測試",
+                    name = googleAccount?.displayName?.ifBlank { "清潔團隊測試" } ?: "清潔團隊測試",
                     phone = "",
-                    email = "cleaner@local",
+                    email = googleAccount?.email ?: "cleaner@local",
                     password = "",
                     address = "",
                     role = UserRole.CLEANER
                 )
+                if (googleAccount != null) {
+                    store.registerGoogle(farmer!!, googleAccount)
+                    pendingGoogleAccount = null
+                }
+                isSkipRoleSelection = false
                 route = AuthRoute.Main
             },
             onRegister = { profile ->
                 scope.launch {
                     teamProfileDao.insert(profile)
-                    farmer = FarmerProfile(
+                    val cleanerProfile = FarmerProfile(
                         name = profile.contactName,
                         phone = profile.phone,
                         email = profile.email,
@@ -346,6 +416,12 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
                         address = "${profile.city}${profile.district}",
                         role = UserRole.CLEANER
                     )
+                    farmer = cleanerProfile
+                    pendingGoogleAccount?.let { googleAccount ->
+                        store.registerGoogle(cleanerProfile, googleAccount)
+                        pendingGoogleAccount = null
+                    }
+                    isSkipRoleSelection = false
                     Toast.makeText(context, "清潔團隊註冊完成", Toast.LENGTH_SHORT).show()
                     route = AuthRoute.Main
                 }
@@ -355,6 +431,12 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
 
         AuthRoute.Main -> RouteDiscoveryScreen(
             farmer = farmer,
+            onLogout = {
+                farmer = null
+                pendingGoogleAccount = null
+                isSkipRoleSelection = false
+                route = AuthRoute.Login
+            },
             modifier = modifier
         )
     }
@@ -483,6 +565,7 @@ private fun RoleCard(
 private fun LoginScreen(
     onLogin: (String, String) -> Unit,
     onSkipLogin: () -> Unit,
+    onGoogleLogin: () -> Unit,
     onRegisterClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -550,6 +633,8 @@ private fun LoginScreen(
                 enabled = account.isNotBlank() && password.isNotBlank(),
                 onClick = { onLogin(account, password) }
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            GoogleSignInButton(onClick = onGoogleLogin)
             Spacer(modifier = Modifier.height(14.dp))
             TextButton(onClick = {}) {
                 Text(text = "忘記密碼？", color = DeepGreen, fontWeight = FontWeight.Bold)
@@ -565,6 +650,55 @@ private fun LoginScreen(
                 .padding(bottom = 18.dp)
         ) {
             Text(text = "略過 (Skip)", color = ExpressiveMuted, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun GoogleSignInButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .border(1.dp, Color(0xFFE3E6EA), RoundedCornerShape(16.dp))
+                .padding(horizontal = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(Color.White),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "G",
+                    color = Color(0xFF4285F4),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Black
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "使用 Google 帳戶登入",
+                color = ExpressiveInk,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -1032,10 +1166,70 @@ private fun LeafLogo(modifier: Modifier = Modifier) {
     }
 }
 
+private suspend fun signInWithGoogle(context: Context): GoogleAccountProfile? {
+    val webClientId = context.getString(R.string.google_web_client_id)
+    if (webClientId.isBlank() || webClientId.startsWith("REPLACE_WITH")) {
+        return null
+    }
+
+    val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(
+        serverClientId = webClientId
+    )
+        .setNonce(generateSecureRandomNonce())
+        .build()
+    val request = GetCredentialRequest.Builder()
+        .addCredentialOption(signInWithGoogleOption)
+        .build()
+
+    return try {
+        val result = CredentialManager.create(context).getCredential(
+            context = context,
+            request = request
+        )
+        val credential = result.credential
+        if (credential is CustomCredential &&
+            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+        ) {
+            val googleCredential = GoogleIdTokenCredential.createFrom(credential.data)
+            GoogleAccountProfile(
+                subject = googleCredential.idToken.extractGoogleSubject().ifBlank { googleCredential.id },
+                displayName = googleCredential.displayName.orEmpty(),
+                email = googleCredential.id
+            )
+        } else {
+            null
+        }
+    } catch (exception: GoogleIdTokenParsingException) {
+        null
+    } catch (exception: GetCredentialException) {
+        null
+    } catch (exception: IllegalArgumentException) {
+        null
+    }
+}
+
+private fun generateSecureRandomNonce(byteLength: Int = 32): String {
+    val randomBytes = ByteArray(byteLength)
+    SecureRandom().nextBytes(randomBytes)
+    return Base64.encodeToString(
+        randomBytes,
+        Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING
+    )
+}
+
+private fun String.extractGoogleSubject(): String {
+    return runCatching {
+        val payload = split(".").getOrNull(1).orEmpty()
+        val decoded = Base64.decode(payload, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+        JSONObject(String(decoded)).optString("sub")
+    }.getOrDefault("")
+}
+
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
 fun RouteDiscoveryScreen(
     farmer: FarmerProfile? = null,
+    onLogout: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1261,6 +1455,8 @@ fun RouteDiscoveryScreen(
 
                         composable(DashboardTab.Settings.route) {
                             SettingsScene(
+                                currentRole = currentRole,
+                                onLogout = onLogout,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -2229,9 +2425,8 @@ private fun FarmlandGridCard(
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.64f))
             .clickable(onClick = onClick)
-            .padding(8.dp)
+            .padding(bottom = 8.dp)
     ) {
         FarmlandImage(
             imageUri = farmland.coverImageUri,
@@ -2725,10 +2920,13 @@ private fun FarmlandImage(
 
     if (imageUri.isNullOrBlank()) {
         Box(
-            modifier = modifier.background(MintGreen),
+            modifier = modifier.background(MintGreen.copy(alpha = 0.62f)),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "無法讀取圖片", color = DeepGreen, style = MaterialTheme.typography.labelLarge)
+            AlbumIcon(
+                color = DeepGreen.copy(alpha = 0.72f),
+                modifier = Modifier.size(42.dp)
+            )
         }
     } else {
         var fallbackBitmap by remember(imageUri) { mutableStateOf<Bitmap?>(null) }
@@ -2765,7 +2963,11 @@ private fun FarmlandImage(
 }
 
 @Composable
-private fun SettingsScene(modifier: Modifier = Modifier) {
+private fun SettingsScene(
+    currentRole: UserRole,
+    onLogout: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     GlassPanel(modifier = modifier) {
         Column(
             modifier = Modifier.padding(18.dp),
@@ -2777,10 +2979,45 @@ private fun SettingsScene(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black
             )
+            SettingsRow("目前身分", currentRole.toDisplayName())
             SettingsRow("定位模式", "GPS 優先")
             SettingsRow("資料儲存", "本機 Room Database")
             SettingsRow("路線模式", "最佳清掃路線")
+            Spacer(modifier = Modifier.height(8.dp))
+            LogoutButton(onClick = onLogout)
         }
+    }
+}
+
+private fun UserRole.toDisplayName(): String {
+    return when (this) {
+        UserRole.FARMER -> "農民"
+        UserRole.CLEANER -> "清潔團隊"
+        UserRole.ADMIN -> "管理員"
+    }
+}
+
+@Composable
+private fun LogoutButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.White,
+            contentColor = WarningRed
+        )
+    ) {
+        Text(
+            text = "登出",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Black
+        )
     }
 }
 
