@@ -1687,11 +1687,18 @@ private fun FarmerRoleHome(
         Surface(
             modifier = Modifier.fillMaxSize(),
             shape = RoundedCornerShape(28.dp),
-            color = GlassWhite,
+            color = Color.White,
             shadowElevation = 8.dp
         ) {
             if (filteredFarmlands.isEmpty()) {
-                FarmerEmptyInspectionState(modifier = Modifier.fillMaxSize())
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(22.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    FarmerEmptyInspectionState()
+                }
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
@@ -1960,7 +1967,7 @@ private fun WeatherCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    WeatherMetric("${weather.temperatureC}簞C")
+                    WeatherMetric("${weather.temperatureC}°C")
                     WeatherMetric("${weather.humidityPercent}%")
                     WeatherMetric("${weather.windKmh}km/h")
                 }
@@ -3756,7 +3763,7 @@ private suspend fun createWeatherSnapshotFromAddress(address: String): WeatherSn
     val cwaWeather = CwaWeatherService.fetchWeather(address) ?: return fallback
 
     return WeatherSnapshot(
-        locationLabel = "${address.trim()} 繚 ${cwaWeather.locationName}",
+        locationLabel = "${address.trim()} → ${cwaWeather.locationName}",
         condition = cwaWeather.condition,
         temperatureC = cwaWeather.temperatureC,
         humidityPercent = fallback.humidityPercent,
