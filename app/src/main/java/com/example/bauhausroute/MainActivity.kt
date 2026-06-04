@@ -18,6 +18,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.Base64
 import android.widget.Toast
@@ -95,6 +96,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -291,6 +293,7 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
     var farmer by remember { mutableStateOf<FarmerProfile?>(null) }
     var pendingGoogleAccount by remember { mutableStateOf<GoogleAccountProfile?>(null) }
     var isSkipRoleSelection by remember { mutableStateOf(false) }
+    var authActionInFlight by remember { mutableStateOf(false) }
 
     suspend fun sessionFor(account: UserAccountEntity): FarmerProfile {
         val teamProfile = if (account.userRole == UserRole.CLEANER) {
@@ -309,8 +312,20 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
         )
     }
 
-    fun enterWithGoogle(profile: FarmerProfile, googleAccount: GoogleAccountProfile) {
+    fun launchAuthAction(action: suspend () -> Unit) {
+        if (authActionInFlight) return
         scope.launch {
+            authActionInFlight = true
+            try {
+                action()
+            } finally {
+                authActionInFlight = false
+            }
+        }
+    }
+
+    fun enterWithGoogle(profile: FarmerProfile, googleAccount: GoogleAccountProfile) {
+        launchAuthAction {
             val userId = userDao.save(
                 UserAccountEntity(
                     email = profile.email.trim().lowercase(),
@@ -328,7 +343,7 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
     when (route) {
         AuthRoute.Login -> LoginScreen(
             onLogin = { account, password ->
-                scope.launch {
+                launchAuthAction {
                     val normalizedAccount = account.trim().lowercase()
                     val roomAccount = userDao.authenticate(normalizedAccount, password)
                     if (roomAccount == null) {
@@ -345,11 +360,11 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
                 route = AuthRoute.RoleSelection
             },
             onGoogleLogin = {
-                scope.launch {
+                launchAuthAction {
                     val googleAccount = signInWithGoogle(context)
                     if (googleAccount == null) {
                         Toast.makeText(context, "Google 登入失敗，請檢查 Web client ID 設定", Toast.LENGTH_SHORT).show()
-                        return@launch
+                        return@launchAuthAction
                     }
 
                     val existingAccount = userDao.findByEmail(googleAccount.email.trim().lowercase())
@@ -427,7 +442,7 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
         AuthRoute.Register -> RegisterScreen(
             onBack = { route = AuthRoute.RoleSelection },
             onRegister = { profile ->
-                scope.launch {
+                launchAuthAction {
                     val farmerProfile = profile.copy(role = UserRole.FARMER)
                     val userId = userDao.save(
                         UserAccountEntity(
@@ -446,7 +461,7 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
         AuthRoute.CleanerRegister -> CleanerTeamRegisterScreen(
             onBack = { route = AuthRoute.RoleSelection },
             onRegister = { profile, password ->
-                scope.launch {
+                launchAuthAction {
                     val userId = userDao.save(
                         UserAccountEntity(
                             email = profile.email.trim().lowercase(),
@@ -707,11 +722,13 @@ private fun GoogleSignInButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val guardedOnClick = rememberThrottledClick(onClick = onClick)
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .height(54.dp)
-            .clickable(onClick = onClick),
+            .clickable(onClick = guardedOnClick),
         shape = RoundedCornerShape(16.dp),
         color = Color.White,
         shadowElevation = 0.dp
@@ -965,6 +982,12 @@ private fun CleanerTeamRegisterScreen(
                 modifier = Modifier.weight(1f)
             )
         }
+        Text(
+            text = "請先選擇縣市地區",
+            color = ExpressiveMuted,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(top = 6.dp)
+        )
         Spacer(modifier = Modifier.height(44.dp))
         MintButton(
             text = "完成註冊",
@@ -1145,8 +1168,10 @@ private fun MintButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val guardedOnClick = rememberThrottledClick(enabled = enabled, onClick = onClick)
+
     Button(
-        onClick = onClick,
+        onClick = guardedOnClick,
         enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
@@ -1160,6 +1185,26 @@ private fun MintButton(
         )
     ) {
         Text(text = text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+    }
+}
+
+@Composable
+private fun rememberThrottledClick(
+    enabled: Boolean = true,
+    intervalMillis: Long = 650L,
+    onClick: () -> Unit
+): () -> Unit {
+    val currentOnClick = rememberUpdatedState(onClick)
+    var lastClickAt by remember { mutableStateOf(0L) }
+
+    return remember(enabled, intervalMillis) {
+        {
+            val now = SystemClock.elapsedRealtime()
+            if (enabled && now - lastClickAt >= intervalMillis) {
+                lastClickAt = now
+                currentOnClick.value()
+            }
+        }
     }
 }
 
@@ -1319,6 +1364,8 @@ fun RouteDiscoveryScreen(
     var roadRoute by remember { mutableStateOf<RoadRouteResult?>(null) }
     var weather by remember { mutableStateOf(createLocalWeather(null, farmer?.address)) }
     var farmerFilter by remember { mutableStateOf(InspectionFilter.All) }
+    var isDocumentPickerOpen by remember { mutableStateOf(false) }
+    var lastNavigationAt by remember { mutableStateOf(0L) }
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: DashboardTab.Home.route
@@ -1356,21 +1403,52 @@ fun RouteDiscoveryScreen(
     fun handlePickedUris(uris: List<Uri>) {
         scope.launch {
             isParsing = true
-            val result = parseGeoPoints(context.contentResolver, uris)
-            points = result.points
-            selectedCount = result.selectedCount
-            missingGpsCount = result.missingGpsCount
-            readErrorCount = result.readErrorCount
-            diagnostics = result.diagnostics
-            roadRoute = null
-            isParsing = false
+            try {
+                val result = parseGeoPoints(context.contentResolver, uris)
+                points = result.points
+                selectedCount = result.selectedCount
+                missingGpsCount = result.missingGpsCount
+                readErrorCount = result.readErrorCount
+                diagnostics = result.diagnostics
+                roadRoute = null
+            } finally {
+                isParsing = false
+            }
         }
     }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
+        isDocumentPickerOpen = false
         handlePickedUris(uris)
+    }
+
+    fun launchDocumentPicker() {
+        if (isDocumentPickerOpen) return
+        isDocumentPickerOpen = true
+        runCatching {
+            filePicker.launch(arrayOf("image/heic", "image/heif"))
+        }.onFailure {
+            isDocumentPickerOpen = false
+            Toast.makeText(context, "無法開啟檔案選擇器，請稍後再試", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun navigateToDetail(farmlandId: Long) {
+        val currentDetailId = backStackEntry
+            ?.arguments
+            ?.getString("farmlandId")
+            ?.toLongOrNull()
+        if (currentRoute == MainRoutes.DetailPattern && currentDetailId == farmlandId) return
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastNavigationAt < 450L) return
+        lastNavigationAt = now
+
+        navController.navigate(MainRoutes.detail(farmlandId)) {
+            launchSingleTop = true
+        }
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -1423,8 +1501,23 @@ fun RouteDiscoveryScreen(
         }
 
         isRouting = true
-        roadRoute = RoadRouteService.planRoute(routePoints)
-        isRouting = false
+        try {
+            roadRoute = runCatching {
+                RoadRouteService.planRoute(routePoints)
+            }.getOrElse { error ->
+                RoadRouteResult(
+                    orderedStops = routePoints,
+                    path = routePoints,
+                    distanceMeters = routePoints.zipWithNext().sumOf { (start, end) ->
+                        start.distanceInMetersTo(end)
+                    },
+                    failedSegments = routePoints.size.minus(1).coerceAtLeast(0),
+                    diagnostics = listOf("ROUTE: ${error.message ?: "unknown error"}")
+                )
+            }
+        } finally {
+            isRouting = false
+        }
     }
 
     val stops = remember(farmlands, points, roadRoute) {
@@ -1456,7 +1549,7 @@ fun RouteDiscoveryScreen(
                 onBellClick = {},
                 currentRole = currentRole,
                 userName = farmer?.name,
-                onScanClick = { filePicker.launch(arrayOf("image/heic", "image/heif")) },
+                onScanClick = ::launchDocumentPicker,
                 modifier = Modifier.padding(bottom = 2.dp)
             )
 
@@ -1466,7 +1559,7 @@ fun RouteDiscoveryScreen(
                     flightAdvice = flightAdvice,
                     isParsing = isParsing,
                     isRouting = isRouting,
-                    onImportClick = { filePicker.launch(arrayOf("image/heic", "image/heif")) },
+                    onImportClick = ::launchDocumentPicker,
                     modifier = Modifier.padding(bottom = 10.dp)
                 )
             }
@@ -1489,9 +1582,7 @@ fun RouteDiscoveryScreen(
                                     readErrorCount = readErrorCount,
                                     diagnostics = diagnostics,
                                     priorityMarkers = priorityMarkers,
-                                    onStopClick = { farmlandId ->
-                                        navController.navigate(MainRoutes.detail(farmlandId))
-                                    },
+                                    onStopClick = ::navigateToDetail,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             } else {
@@ -1500,9 +1591,7 @@ fun RouteDiscoveryScreen(
                                     farmlands = farmlands,
                                     selectedFilter = farmerFilter,
                                     onFilterSelected = { farmerFilter = it },
-                                    onFarmlandSelected = { farmlandId ->
-                                        navController.navigate(MainRoutes.detail(farmlandId))
-                                    },
+                                    onFarmlandSelected = ::navigateToDetail,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
@@ -1515,9 +1604,7 @@ fun RouteDiscoveryScreen(
                                     farmlands = farmlands,
                                     ownerUserId = currentUserId,
                                     allowFarmerEdits = true,
-                                    onFarmlandSelected = { farmlandId ->
-                                        navController.navigate(MainRoutes.detail(farmlandId))
-                                    },
+                                    onFarmlandSelected = ::navigateToDetail,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             } else {
@@ -1526,9 +1613,7 @@ fun RouteDiscoveryScreen(
                                     farmlands = farmlands,
                                     selectedFilter = farmerFilter,
                                     onFilterSelected = { farmerFilter = it },
-                                    onFarmlandSelected = { farmlandId ->
-                                        navController.navigate(MainRoutes.detail(farmlandId))
-                                    },
+                                    onFarmlandSelected = ::navigateToDetail,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
@@ -1569,6 +1654,7 @@ fun RouteDiscoveryScreen(
             selectedTab = selectedTab,
             tabs = availableTabs,
             onTabSelected = { tab ->
+                if (tab == selectedTab) return@BottomNavigationBar
                 navController.navigate(tab.route) {
                     popUpTo(DashboardTab.Home.route) {
                         saveState = true
@@ -2558,6 +2644,8 @@ private fun FarmlandDetailScene(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var isImagePickerOpen by remember { mutableStateOf(false) }
+    var isDeleteInFlight by remember { mutableStateOf(false) }
     val detailImages = farmland.detailImages
     val pagerState = rememberPagerState(
         initialPage = (detailImages.size - 1).coerceAtLeast(0),
@@ -2566,6 +2654,7 @@ private fun FarmlandDetailScene(
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
+        isImagePickerOpen = false
         if (uri != null) {
             persistImageReadPermission(context, uri)
             scope.launch {
@@ -2573,6 +2662,19 @@ private fun FarmlandDetailScene(
                 dao.updateDetailImages(farmland.id, farmland.ownerUserId, updatedImages)
                 Toast.makeText(context, "已新增巡檢圖片", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    fun launchImagePicker() {
+        if (isImagePickerOpen) return
+        isImagePickerOpen = true
+        runCatching {
+            imagePicker.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+        }.onFailure {
+            isImagePickerOpen = false
+            Toast.makeText(context, "無法開啟圖片選擇器，請稍後再試", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -2636,11 +2738,7 @@ private fun FarmlandDetailScene(
                     }
                     if (allowFarmerEdits) {
                         AddDetailImageButton(
-                            onClick = {
-                                imagePicker.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            }
+                            onClick = ::launchImagePicker
                         )
                     }
                     Text(
@@ -2721,12 +2819,16 @@ private fun FarmlandDetailScene(
             },
             confirmButton = {
                 TextButton(
+                    enabled = !isDeleteInFlight,
                     onClick = {
+                        if (isDeleteInFlight) return@TextButton
+                        isDeleteInFlight = true
                         scope.launch {
                             dao.delete(farmland)
                             showDeleteDialog = false
                             Toast.makeText(context, "已刪除農地巡檢", Toast.LENGTH_SHORT).show()
                             onBack()
+                            isDeleteInFlight = false
                         }
                     }
                 ) {

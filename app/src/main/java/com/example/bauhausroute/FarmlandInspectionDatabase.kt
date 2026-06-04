@@ -140,7 +140,12 @@ interface UserDao {
         if (existing != null) {
             return existing.userId
         }
-        return insert(account)
+        val insertedId = insert(account)
+        if (insertedId != -1L) {
+            return insertedId
+        }
+        return findByEmail(account.email)?.userId
+            ?: error("Unable to save account for ${account.email}")
     }
 }
 
