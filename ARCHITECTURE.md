@@ -1,123 +1,141 @@
 # BauhausRoute 架構圖
 
+此文件整理 BauhausRoute Android 專案目前的主要模組、資料流與外部服務依賴。
+
+## 系統架構
+
 ```mermaid
-flowchart TB
-    farmer["農民使用者"]
-    cleaner["清運團隊"]
-    admin["管理者"]
-
-    subgraph app["Android App: BauhausRoute"]
-        main["MainActivity"]
-        auth["登入 / 註冊流程<br/>FarmerAuthApp"]
-        ui["Jetpack Compose UI<br/>首頁、狀態、設定、農地詳情"]
-        nav["Navigation Compose<br/>Home / Status / Settings / Detail"]
-        map["地圖與路線畫面<br/>BauhausRouteMap / MapPreview"]
-        photo["照片與定位處理<br/>Photo Picker / EXIF GPS / LocationManager"]
-        weatherState["天氣與飛行建議<br/>WeatherSnapshot / FlightAdvice"]
+flowchart LR
+    subgraph Users["使用者角色"]
+        Farmer["農民"]
+        Cleaner["清運團隊"]
+        Admin["管理者"]
     end
 
-    subgraph domain["本機邏輯"]
-        localProfile["FarmerLocalStore<br/>UserRole / FarmerProfile / GoogleAccountProfile"]
-        routePlanner["RoutePlanner<br/>最近鄰排序 / 距離計算"]
-        roadRoute["RoadRouteService<br/>OSRM 路線查詢與 fallback"]
-        weatherService["CwaWeatherService<br/>縣市解析 / 天氣 API 解析"]
+    subgraph App["Android App"]
+        Main["MainActivity<br/>App 入口與流程組裝"]
+        Auth["登入 / 註冊流程<br/>帳密登入、Google 登入、角色選擇"]
+        Compose["Jetpack Compose UI<br/>首頁、狀態、設定、農地詳情"]
+        Nav["Navigation Compose<br/>Home / Status / Settings / Detail"]
+        MapPhoto["地圖與照片<br/>osmdroid、Photo Picker、EXIF GPS"]
+        WeatherUi["天氣與飛行建議<br/>WeatherSnapshot / FlightAdvice"]
     end
 
-    subgraph data["Room Database: farmland_inspections.db"]
-        db["FarmlandInspectionDatabase"]
-        userDao["UserDao"]
-        farmerDao["FarmerDao"]
-        cleanerDao["CleanerDao"]
-        accounts[("user_accounts")]
-        farmlands[("farmland_inspections")]
-        teams[("team_profiles")]
-        tasks[("cleaner_tasks")]
+    subgraph Domain["本機邏輯"]
+        Profile["FarmerLocalStore<br/>UserRole、FarmerProfile、GoogleAccountProfile"]
+        RoutePlanner["RoutePlanner<br/>最近鄰排序、距離計算"]
+        RoadRoute["RoadRouteService<br/>OSRM 路線查詢、失敗 fallback"]
+        WeatherService["CwaWeatherService<br/>縣市解析、CWA JSON 解析"]
     end
 
-    subgraph external["外部與裝置服務"]
-        google["Google Identity<br/>Credential Manager / Google ID"]
-        cwa["中央氣象署 Open Data API"]
-        osrm["OSRM public routing API"]
-        osm["OpenStreetMap tiles<br/>osmdroid"]
-        androidLocation["Android Location Provider"]
-        mediaStore["Android Photo Picker / MediaStore"]
+    subgraph Data["Room Database"]
+        DB["FarmlandInspectionDatabase<br/>farmland_inspections.db"]
+        UserDao["UserDao"]
+        FarmerDao["FarmerDao"]
+        CleanerDao["CleanerDao"]
+        UserTable[("user_accounts")]
+        FarmTable[("farmland_inspections")]
+        TeamTable[("team_profiles")]
+        TaskTable[("cleaner_tasks")]
     end
 
-    farmer --> auth
-    cleaner --> auth
-    admin --> auth
+    subgraph External["外部與裝置服務"]
+        Google["Google Identity<br/>Credential Manager / Google ID"]
+        CWA["中央氣象署 Open Data API"]
+        OSRM["OSRM public routing API"]
+        OSM["OpenStreetMap tiles"]
+        Location["Android Location Provider"]
+        Media["Android Photo Picker / MediaStore"]
+    end
 
-    main --> auth
-    main --> ui
-    ui --> nav
-    ui --> map
-    ui --> photo
-    ui --> weatherState
+    Farmer --> Auth
+    Cleaner --> Auth
+    Admin --> Auth
 
-    auth --> localProfile
-    auth --> userDao
-    auth --> google
+    Auth --> Main
+    Main --> Compose
+    Compose --> Nav
+    Compose --> MapPhoto
+    Compose --> WeatherUi
 
-    ui --> farmerDao
-    ui --> cleanerDao
-    ui --> localProfile
+    Auth --> Profile
+    Auth --> UserDao
+    Auth --> Google
 
-    map --> routePlanner
-    map --> roadRoute
-    map --> osm
-    photo --> androidLocation
-    photo --> mediaStore
-    weatherState --> weatherService
+    Compose --> FarmerDao
+    Compose --> CleanerDao
+    Compose --> Profile
 
-    roadRoute --> osrm
-    weatherService --> cwa
+    MapPhoto --> RoutePlanner
+    RoutePlanner --> RoadRoute
+    RoadRoute --> OSRM
+    MapPhoto --> OSM
+    MapPhoto --> Location
+    MapPhoto --> Media
 
-    userDao --> db
-    farmerDao --> db
-    cleanerDao --> db
-    db --> accounts
-    db --> farmlands
-    db --> teams
-    db --> tasks
+    WeatherUi --> WeatherService
+    WeatherService --> CWA
+
+    UserDao --> DB
+    FarmerDao --> DB
+    CleanerDao --> DB
+    DB --> UserTable
+    DB --> FarmTable
+    DB --> TeamTable
+    DB --> TaskTable
 ```
 
-## 分層說明
-
-| 層級 | 主要檔案 / 元件 | 職責 |
-| --- | --- | --- |
-| 使用者入口 | `MainActivity.kt` | App 入口、登入狀態、角色流程與主要 Compose 畫面組裝 |
-| UI 與導覽 | `MainActivity.kt`、Navigation Compose | 農民 / 清運角色畫面、底部導覽、農地詳情、地圖與設定頁 |
-| 本機資料 | `FarmlandInspectionDatabase.kt` | Room entities、DAO、資料庫 migration、本機帳號與任務資料 |
-| 帳號模型 | `FarmerLocalStore.kt` | 使用者角色、農民 profile、Google 帳號 profile |
-| 路線規劃 | `RoutePlanner.kt`、`RoadRouteService.kt` | 清運點排序、距離計算、OSRM 路線查詢，失敗時回退成直線路徑 |
-| 天氣資料 | `CwaWeatherService.kt` | 依地址或 GPS 推估縣市，呼叫中央氣象署 Open Data 並轉成 App 天氣模型 |
-| 裝置能力 | Android Location、Photo Picker、EXIF | 取得位置、照片 URI、照片 GPS 資訊與本機媒體讀取權限 |
-| 外部服務 | Google Identity、OSRM、OpenStreetMap、CWA | Google 登入、道路路線、地圖圖資、天氣資料 |
-
-## 資料流摘要
+## 資料流
 
 ```mermaid
 sequenceDiagram
     actor User as 使用者
     participant UI as Compose UI
+    participant Auth as 登入流程
     participant DB as Room DAO
-    participant Media as Photo / Location
+    participant Device as 裝置服務
     participant Weather as CwaWeatherService
     participant Route as RoadRouteService
-    participant External as 外部 API
+    participant API as 外部 API
 
-    User->>UI: 登入、註冊或進入角色畫面
-    UI->>DB: 讀寫帳號、農地、清運任務
-    User->>UI: 新增巡檢照片或任務
-    UI->>Media: 讀取照片、EXIF GPS、裝置定位
-    Media-->>UI: URI 與座標
-    UI->>DB: 儲存巡檢 / 任務資料
+    User->>Auth: 登入、Google 登入或註冊角色
+    Auth->>DB: 建立或查詢 user_accounts / team_profiles
+    Auth-->>UI: 進入主畫面與角色狀態
+    User->>UI: 新增農地巡檢或查看清運路線
+    UI->>Device: 讀取照片、EXIF GPS、裝置定位
+    Device-->>UI: URI、座標或位置 fallback
+    UI->>DB: 儲存巡檢、任務、照片 URI
     UI->>Weather: 用地址或座標取得天氣
-    Weather->>External: 呼叫中央氣象署 Open Data
-    External-->>Weather: 天氣 JSON
+    Weather->>API: 呼叫中央氣象署 Open Data
+    API-->>Weather: 天氣 JSON
     Weather-->>UI: WeatherSnapshot
-    UI->>Route: 規劃清運順序與道路路徑
-    Route->>External: 呼叫 OSRM
-    External-->>Route: 路線 GeoJSON
+    UI->>Route: 依優先任務規劃清運順序
+    Route->>API: 呼叫 OSRM
+    API-->>Route: 路線 GeoJSON
     Route-->>UI: RoadRouteResult
+```
+
+## 主要檔案職責
+
+| 檔案 | 職責 |
+| --- | --- |
+| `app/src/main/java/com/example/bauhausroute/MainActivity.kt` | App 入口、Compose UI、登入流程、導覽、地圖、照片、定位與畫面狀態 |
+| `app/src/main/java/com/example/bauhausroute/FarmlandInspectionDatabase.kt` | Room entities、DAO、資料庫 singleton 與 migration |
+| `app/src/main/java/com/example/bauhausroute/FarmerLocalStore.kt` | 使用者角色與登入後 profile model |
+| `app/src/main/java/com/example/bauhausroute/RoutePlanner.kt` | 清運點最近鄰排序與座標距離計算 |
+| `app/src/main/java/com/example/bauhausroute/RoadRouteService.kt` | 呼叫 OSRM、解析路線、路線失敗時 fallback |
+| `app/src/main/java/com/example/bauhausroute/CwaWeatherService.kt` | 呼叫中央氣象署 Open Data、解析天氣資料 |
+
+## 圖片檔
+
+架構圖圖片已輸出為：
+
+```text
+bauhausroute-architecture.svg
+```
+
+可在 README 中引用：
+
+```md
+![BauhausRoute 架構圖](./bauhausroute-architecture.svg)
 ```

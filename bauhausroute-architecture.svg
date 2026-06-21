@@ -1,163 +1,155 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1050" viewBox="0 0 1600 1050" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1100" viewBox="0 0 1800 1100" role="img" aria-labelledby="title desc">
   <title id="title">BauhausRoute 系統架構圖</title>
-  <desc id="desc">BauhausRoute Android App 的使用者、Jetpack Compose UI、本機邏輯、Room Database 與外部服務架構圖。</desc>
+  <desc id="desc">BauhausRoute Android App 的使用者、Compose UI、本機邏輯、Room Database 與外部服務架構圖。</desc>
   <defs>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
-      <path d="M2,2 L10,6 L2,10 Z" fill="#334155" />
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#334155" />
     </marker>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.14" />
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.12"/>
     </filter>
     <style>
       .bg { fill: #f8fafc; }
-      .title { font: 800 44px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #0f172a; }
-      .subtitle { font: 500 20px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #475569; }
-      .layer-title { font: 800 24px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #0f172a; }
-      .box-title { font: 800 21px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #0f172a; }
-      .box-text { font: 500 16px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #334155; }
-      .small { font: 500 14px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #475569; }
-      .pill-text { font: 700 17px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #ffffff; }
-      .arrow { fill: none; stroke: #334155; stroke-width: 2.4; marker-end: url(#arrow); }
-      .soft-arrow { fill: none; stroke: #64748b; stroke-width: 2; stroke-dasharray: 7 7; marker-end: url(#arrow); }
-      .panel { rx: 22; filter: url(#shadow); }
-      .box { rx: 16; filter: url(#shadow); }
+      .title { font: 800 48px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 22px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #475569; }
+      .panel-title { font: 800 26px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #0f172a; }
+      .box-title { font: 800 22px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #0f172a; }
+      .box-text { font: 500 17px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #334155; }
+      .note { font: 500 15px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #64748b; }
+      .panel { fill: #ffffff; stroke: #dbe7e2; stroke-width: 1.5; rx: 26; filter: url(#shadow); }
+      .box { stroke: rgba(15,23,42,0.08); stroke-width: 1.5; rx: 18; filter: url(#shadow); }
+      .arrow { fill: none; stroke: #334155; stroke-width: 3; marker-end: url(#arrow); }
+      .soft-arrow { fill: none; stroke: #64748b; stroke-width: 2.4; stroke-dasharray: 8 8; marker-end: url(#arrow); }
+      .pill-text { font: 800 18px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #ffffff; }
     </style>
   </defs>
 
-  <rect class="bg" width="1600" height="1050" />
-  <rect x="0" y="0" width="1600" height="1050" fill="#eef7f3" opacity="0.55" />
+  <rect class="bg" width="1800" height="1100"/>
+  <rect x="0" y="0" width="1800" height="1100" fill="#edf7f2" opacity="0.85"/>
 
   <text x="80" y="78" class="title">BauhausRoute 系統架構圖</text>
-  <text x="80" y="116" class="subtitle">Android / Kotlin / Jetpack Compose / Room / osmdroid / OSRM / CWA Open Data</text>
+  <text x="80" y="118" class="subtitle">Android / Kotlin / Jetpack Compose / Room / osmdroid / OSRM / 中央氣象署 Open Data</text>
+
+  <!-- Column panels -->
+  <rect x="70" y="170" width="250" height="810" class="panel"/>
+  <rect x="365" y="170" width="360" height="810" class="panel"/>
+  <rect x="770" y="170" width="330" height="810" class="panel"/>
+  <rect x="1145" y="170" width="300" height="810" class="panel"/>
+  <rect x="1490" y="170" width="240" height="810" class="panel"/>
+
+  <text x="105" y="220" class="panel-title">使用者角色</text>
+  <text x="400" y="220" class="panel-title">Android App / UI</text>
+  <text x="805" y="220" class="panel-title">本機邏輯</text>
+  <text x="1180" y="220" class="panel-title">Room Database</text>
+  <text x="1520" y="220" class="panel-title">外部服務</text>
 
   <!-- Users -->
-  <rect x="80" y="155" width="1440" height="112" class="panel" fill="#ffffff" />
-  <text x="110" y="195" class="layer-title">使用者角色</text>
-  <rect x="360" y="178" width="220" height="56" rx="28" fill="#1f9d73" />
-  <text x="420" y="213" class="pill-text">農民使用者</text>
-  <rect x="690" y="178" width="220" height="56" rx="28" fill="#2563eb" />
-  <text x="750" y="213" class="pill-text">清運團隊</text>
-  <rect x="1020" y="178" width="220" height="56" rx="28" fill="#7c3aed" />
-  <text x="1094" y="213" class="pill-text">管理者</text>
+  <rect x="105" y="285" width="180" height="72" class="box" fill="#1f9d73"/>
+  <text x="158" y="329" class="pill-text">農民</text>
+  <rect x="105" y="430" width="180" height="72" class="box" fill="#2563eb"/>
+  <text x="143" y="474" class="pill-text">清運團隊</text>
+  <rect x="105" y="575" width="180" height="72" class="box" fill="#7c3aed"/>
+  <text x="158" y="619" class="pill-text">管理者</text>
 
-  <!-- App layer -->
-  <rect x="80" y="305" width="1440" height="300" class="panel" fill="#ffffff" />
-  <text x="110" y="347" class="layer-title">Android App：BauhausRoute</text>
+  <!-- App/UI -->
+  <rect x="405" y="270" width="280" height="105" class="box" fill="#e0f2fe"/>
+  <text x="430" y="307" class="box-title">MainActivity</text>
+  <text x="430" y="338" class="box-text">App 入口、流程組裝</text>
+  <text x="430" y="364" class="box-text">登入狀態與角色切換</text>
 
-  <rect x="125" y="382" width="230" height="150" class="box" fill="#e0f2fe" />
-  <text x="150" y="420" class="box-title">MainActivity</text>
-  <text x="150" y="455" class="box-text">App 入口</text>
-  <text x="150" y="482" class="box-text">登入狀態</text>
-  <text x="150" y="509" class="box-text">角色流程組裝</text>
+  <rect x="405" y="420" width="280" height="120" class="box" fill="#dcfce7"/>
+  <text x="430" y="457" class="box-title">登入 / 註冊流程</text>
+  <text x="430" y="488" class="box-text">帳密登入、Google 登入</text>
+  <text x="430" y="514" class="box-text">農民 / 清運 / 管理角色</text>
 
-  <rect x="405" y="382" width="250" height="150" class="box" fill="#dcfce7" />
-  <text x="430" y="420" class="box-title">登入 / 註冊流程</text>
-  <text x="430" y="455" class="box-text">FarmerAuthApp</text>
-  <text x="430" y="482" class="box-text">一般帳密登入</text>
-  <text x="430" y="509" class="box-text">Google 登入</text>
+  <rect x="405" y="585" width="280" height="135" class="box" fill="#fef3c7"/>
+  <text x="430" y="622" class="box-title">Jetpack Compose UI</text>
+  <text x="430" y="653" class="box-text">Home / Status / Settings</text>
+  <text x="430" y="679" class="box-text">Detail、Dashboard</text>
+  <text x="430" y="705" class="box-text">Navigation Compose</text>
 
-  <rect x="705" y="382" width="260" height="150" class="box" fill="#fef3c7" />
-  <text x="730" y="420" class="box-title">Jetpack Compose UI</text>
-  <text x="730" y="455" class="box-text">首頁 / 狀態 / 設定</text>
-  <text x="730" y="482" class="box-text">農地詳情</text>
-  <text x="730" y="509" class="box-text">清運任務視圖</text>
+  <rect x="405" y="765" width="280" height="135" class="box" fill="#ede9fe"/>
+  <text x="430" y="802" class="box-title">地圖 / 照片 / 天氣 UI</text>
+  <text x="430" y="833" class="box-text">osmdroid 地圖顯示</text>
+  <text x="430" y="859" class="box-text">Photo Picker、EXIF GPS</text>
+  <text x="430" y="885" class="box-text">WeatherSnapshot</text>
 
-  <rect x="1015" y="382" width="235" height="150" class="box" fill="#ede9fe" />
-  <text x="1040" y="420" class="box-title">地圖與照片</text>
-  <text x="1040" y="455" class="box-text">BauhausRouteMap</text>
-  <text x="1040" y="482" class="box-text">Photo Picker</text>
-  <text x="1040" y="509" class="box-text">EXIF GPS / 定位</text>
+  <!-- Domain -->
+  <rect x="810" y="270" width="250" height="105" class="box" fill="#e0f2fe"/>
+  <text x="835" y="307" class="box-title">FarmerLocalStore</text>
+  <text x="835" y="338" class="box-text">UserRole</text>
+  <text x="835" y="364" class="box-text">Farmer / Google profile</text>
 
-  <rect x="1300" y="382" width="175" height="150" class="box" fill="#ffe4e6" />
-  <text x="1324" y="420" class="box-title">天氣狀態</text>
-  <text x="1324" y="455" class="box-text">WeatherSnapshot</text>
-  <text x="1324" y="482" class="box-text">FlightAdvice</text>
-  <text x="1324" y="509" class="box-text">即時提醒</text>
+  <rect x="810" y="430" width="250" height="105" class="box" fill="#dcfce7"/>
+  <text x="835" y="467" class="box-title">RoutePlanner</text>
+  <text x="835" y="498" class="box-text">最近鄰排序</text>
+  <text x="835" y="524" class="box-text">座標距離計算</text>
 
-  <rect x="520" y="555" width="570" height="32" rx="16" fill="#0f172a" opacity="0.9" />
-  <text x="618" y="577" class="pill-text">Navigation Compose：Home / Status / Settings / Detail</text>
+  <rect x="810" y="590" width="250" height="105" class="box" fill="#ffedd5"/>
+  <text x="835" y="627" class="box-title">RoadRouteService</text>
+  <text x="835" y="658" class="box-text">OSRM 路線查詢</text>
+  <text x="835" y="684" class="box-text">失敗時 fallback</text>
 
-  <!-- Domain layer -->
-  <rect x="80" y="640" width="690" height="275" class="panel" fill="#ffffff" />
-  <text x="110" y="682" class="layer-title">本機邏輯</text>
+  <rect x="810" y="750" width="250" height="105" class="box" fill="#ffe4e6"/>
+  <text x="835" y="787" class="box-title">CwaWeatherService</text>
+  <text x="835" y="818" class="box-text">地址 / GPS 對應縣市</text>
+  <text x="835" y="844" class="box-text">CWA JSON 解析</text>
 
-  <rect x="125" y="715" width="275" height="78" class="box" fill="#e0f2fe" />
-  <text x="150" y="748" class="box-title">FarmerLocalStore</text>
-  <text x="150" y="776" class="box-text">UserRole / FarmerProfile / GoogleAccountProfile</text>
+  <!-- Data -->
+  <rect x="1185" y="270" width="220" height="95" class="box" fill="#e0f2fe"/>
+  <text x="1210" y="306" class="box-title">Database</text>
+  <text x="1210" y="337" class="box-text">farmland_inspections.db</text>
 
-  <rect x="445" y="715" width="275" height="78" class="box" fill="#dcfce7" />
-  <text x="470" y="748" class="box-title">RoutePlanner</text>
-  <text x="470" y="776" class="box-text">最近鄰排序 / 距離計算</text>
+  <rect x="1185" y="420" width="220" height="70" class="box" fill="#dbeafe"/>
+  <text x="1248" y="463" class="box-title">UserDao</text>
+  <rect x="1185" y="530" width="220" height="70" class="box" fill="#dcfce7"/>
+  <text x="1238" y="573" class="box-title">FarmerDao</text>
+  <rect x="1185" y="640" width="220" height="70" class="box" fill="#ede9fe"/>
+  <text x="1235" y="683" class="box-title">CleanerDao</text>
 
-  <rect x="125" y="820" width="275" height="78" class="box" fill="#fef3c7" />
-  <text x="150" y="853" class="box-title">RoadRouteService</text>
-  <text x="150" y="881" class="box-text">OSRM 路線查詢 / fallback</text>
+  <rect x="1185" y="765" width="220" height="135" class="box" fill="#f8fafc"/>
+  <text x="1210" y="802" class="box-title">Tables</text>
+  <text x="1210" y="833" class="box-text">user_accounts</text>
+  <text x="1210" y="859" class="box-text">farmland_inspections</text>
+  <text x="1210" y="885" class="box-text">team_profiles / tasks</text>
 
-  <rect x="445" y="820" width="275" height="78" class="box" fill="#ffe4e6" />
-  <text x="470" y="853" class="box-title">CwaWeatherService</text>
-  <text x="470" y="881" class="box-text">縣市解析 / 天氣 API 解析</text>
+  <!-- External -->
+  <rect x="1525" y="285" width="170" height="70" class="box" fill="#0ea5e9"/>
+  <text x="1547" y="328" class="pill-text">Google ID</text>
+  <rect x="1525" y="430" width="170" height="70" class="box" fill="#16a34a"/>
+  <text x="1540" y="473" class="pill-text">CWA API</text>
+  <rect x="1525" y="575" width="170" height="70" class="box" fill="#ea580c"/>
+  <text x="1555" y="618" class="pill-text">OSRM</text>
+  <rect x="1525" y="720" width="170" height="70" class="box" fill="#475569"/>
+  <text x="1556" y="763" class="pill-text">OSM</text>
+  <rect x="1525" y="850" width="170" height="70" class="box" fill="#64748b"/>
+  <text x="1540" y="893" class="pill-text">Location / Media</text>
 
-  <!-- Data layer -->
-  <rect x="820" y="640" width="335" height="275" class="panel" fill="#ffffff" />
-  <text x="850" y="682" class="layer-title">Room Database</text>
+  <!-- Arrows -->
+  <path class="arrow" d="M285 321 C335 321 350 322 405 322"/>
+  <path class="arrow" d="M285 466 C335 466 350 480 405 480"/>
+  <path class="arrow" d="M285 611 C335 611 350 480 405 480"/>
 
-  <rect x="865" y="715" width="245" height="56" class="box" fill="#e0f2fe" />
-  <text x="890" y="750" class="box-title">FarmlandInspectionDatabase</text>
+  <path class="arrow" d="M685 322 C725 322 760 322 810 322"/>
+  <path class="arrow" d="M685 480 C725 480 760 322 810 322"/>
+  <path class="arrow" d="M685 653 C730 653 760 482 810 482"/>
+  <path class="arrow" d="M685 833 C730 833 760 642 810 642"/>
+  <path class="arrow" d="M685 833 C730 833 760 802 810 802"/>
 
-  <rect x="860" y="800" width="120" height="46" rx="14" fill="#2563eb" />
-  <text x="889" y="830" class="pill-text">UserDao</text>
-  <rect x="995" y="800" width="120" height="46" rx="14" fill="#1f9d73" />
-  <text x="1016" y="830" class="pill-text">FarmerDao</text>
-  <rect x="860" y="858" width="255" height="46" rx="14" fill="#7c3aed" />
-  <text x="940" y="888" class="pill-text">CleanerDao</text>
+  <path class="arrow" d="M685 480 C885 480 1050 455 1185 455"/>
+  <path class="arrow" d="M685 653 C870 653 1030 565 1185 565"/>
+  <path class="arrow" d="M685 653 C870 653 1030 675 1185 675"/>
 
-  <text x="860" y="947" class="small">Tables: user_accounts, farmland_inspections,</text>
-  <text x="860" y="970" class="small">team_profiles, cleaner_tasks</text>
+  <path class="soft-arrow" d="M1060 642 C1245 642 1380 610 1525 610"/>
+  <path class="soft-arrow" d="M1060 802 C1245 802 1380 465 1525 465"/>
+  <path class="soft-arrow" d="M685 833 C1000 833 1290 755 1525 755"/>
+  <path class="soft-arrow" d="M685 833 C1000 833 1290 885 1525 885"/>
+  <path class="soft-arrow" d="M685 480 C1000 480 1290 320 1525 320"/>
 
-  <!-- External layer -->
-  <rect x="1205" y="640" width="315" height="275" class="panel" fill="#ffffff" />
-  <text x="1235" y="682" class="layer-title">外部與裝置服務</text>
+  <path class="arrow" d="M1295 490 L1295 530"/>
+  <path class="arrow" d="M1295 600 L1295 640"/>
+  <path class="arrow" d="M1295 710 L1295 765"/>
 
-  <rect x="1245" y="715" width="235" height="48" rx="14" fill="#0ea5e9" />
-  <text x="1280" y="745" class="pill-text">Google Identity</text>
-  <rect x="1245" y="777" width="235" height="48" rx="14" fill="#16a34a" />
-  <text x="1286" y="807" class="pill-text">CWA Open Data</text>
-  <rect x="1245" y="839" width="235" height="48" rx="14" fill="#ea580c" />
-  <text x="1310" y="869" class="pill-text">OSRM API</text>
-  <rect x="1245" y="901" width="235" height="48" rx="14" fill="#475569" />
-  <text x="1272" y="931" class="pill-text">OSM / Location / Media</text>
-
-  <!-- Arrows users to app -->
-  <path class="arrow" d="M470 234 C470 275 245 285 240 382" />
-  <path class="arrow" d="M800 234 C800 286 530 300 530 382" />
-  <path class="arrow" d="M1130 234 C1130 286 835 300 835 382" />
-
-  <!-- App internal arrows -->
-  <path class="arrow" d="M355 457 L405 457" />
-  <path class="arrow" d="M655 457 L705 457" />
-  <path class="arrow" d="M965 457 L1015 457" />
-  <path class="arrow" d="M1250 457 L1300 457" />
-
-  <!-- App to domain/data/external -->
-  <path class="arrow" d="M530 532 C530 600 262 625 262 715" />
-  <path class="arrow" d="M1132 532 C1132 600 582 622 582 715" />
-  <path class="arrow" d="M1132 532 C1132 622 262 730 262 820" />
-  <path class="arrow" d="M1388 532 C1388 622 582 730 582 820" />
-
-  <path class="arrow" d="M530 532 C530 608 988 630 988 715" />
-  <path class="arrow" d="M835 532 C835 632 920 710 920 800" />
-  <path class="arrow" d="M835 532 C835 632 1055 710 1055 800" />
-  <path class="arrow" d="M835 532 C835 652 988 770 988 858" />
-
-  <path class="soft-arrow" d="M530 532 C530 630 1362 625 1362 715" />
-  <path class="soft-arrow" d="M582 898 C582 982 1362 980 1362 825" />
-  <path class="soft-arrow" d="M262 898 C262 1010 1362 1010 1362 887" />
-  <path class="soft-arrow" d="M1132 532 C1132 590 1362 596 1362 949" />
-
-  <!-- Data arrows -->
-  <path class="arrow" d="M920 800 L960 771" />
-  <path class="arrow" d="M1055 800 L1018 771" />
-  <path class="arrow" d="M988 858 L988 771" />
-
-  <text x="80" y="1000" class="small">產出檔案：bauhausroute-architecture.svg ｜ 可直接放入 README：![BauhausRoute Architecture](./bauhausroute-architecture.svg)</text>
+  <text x="80" y="1035" class="note">主要來源：MainActivity.kt、FarmlandInspectionDatabase.kt、FarmerLocalStore.kt、RoutePlanner.kt、RoadRouteService.kt、CwaWeatherService.kt</text>
+  <text x="80" y="1062" class="note">README 引用：![BauhausRoute 架構圖](./bauhausroute-architecture.svg)</text>
 </svg>

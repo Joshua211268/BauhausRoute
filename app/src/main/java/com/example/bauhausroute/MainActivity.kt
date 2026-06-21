@@ -43,6 +43,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -130,7 +131,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.bauhausroute.ui.theme.BauhausTheme
+import com.example.bauhausroute.ui.theme.BauhausRouteTheme
 import com.example.bauhausroute.ui.theme.ExpressiveAmber
 import com.example.bauhausroute.ui.theme.ExpressiveInk
 import com.example.bauhausroute.ui.theme.ExpressiveMuted
@@ -158,13 +159,20 @@ import java.util.Date
 import java.util.Locale
 import kotlin.coroutines.resume
 
-private val SoftGreen = Color(0xFFEAF7EF)
 private val LeafGreen = Color(0xFF32C86E)
 private val DeepGreen = Color(0xFF168A4A)
 private val MintGreen = Color(0xFFDDF7E8)
 private val WarningRed = Color(0xFFE84B5F)
-private val GlassWhite = Color.White.copy(alpha = 0.78f)
-private val GlassStroke = Color.White.copy(alpha = 0.72f)
+
+@Composable
+private fun glassContainerColor(): Color {
+    return MaterialTheme.colorScheme.surface.copy(alpha = if (isSystemInDarkTheme()) 0.9f else 0.78f)
+}
+
+@Composable
+private fun glassStrokeColor(): Color {
+    return MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isSystemInDarkTheme()) 0.86f else 0.72f)
+}
 
 data class GeoPointData(
     val latitude: Double,
@@ -175,7 +183,7 @@ private data class CleanStop(
     val farmlandId: Long?,
     val name: String,
     val area: String,
-    val code: String,
+    val code: String,   
     val status: String,
     val items: Int,
     val priorityNumber: Int,
@@ -236,14 +244,48 @@ private enum class AuthRoute {
     Main
 }
 
+private enum class ThemeMode(val label: String) {
+    Dark("黑色"),
+    Light("明亮"),
+    System("跟隨系統");
+
+    fun shouldUseDarkTheme(systemInDarkTheme: Boolean): Boolean {
+        return when (this) {
+            Dark -> true
+            Light -> false
+            System -> systemInDarkTheme
+        }
+    }
+}
+
+private const val PreferencesName = "bauhaus_route_preferences"
+private const val ThemeModePreferenceKey = "theme_mode"
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val preferences = getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
         setContent {
-            BauhausTheme {
+            val systemInDarkTheme = isSystemInDarkTheme()
+            var themeMode by remember {
+                mutableStateOf(
+                    preferences.getString(ThemeModePreferenceKey, ThemeMode.System.name)
+                        ?.let { storedMode -> ThemeMode.entries.firstOrNull { it.name == storedMode } }
+                        ?: ThemeMode.System
+                )
+            }
+
+            fun updateThemeMode(mode: ThemeMode) {
+                themeMode = mode
+                preferences.edit().putString(ThemeModePreferenceKey, mode.name).apply()
+            }
+
+            BauhausRouteTheme(darkTheme = themeMode.shouldUseDarkTheme(systemInDarkTheme)) {
                 GlassAppBackground {
                     FarmerAuthApp(
+                        themeMode = themeMode,
+                        onThemeModeChange = ::updateThemeMode,
                         modifier = Modifier
                             .fillMaxSize()
                             .statusBarsPadding()
@@ -256,24 +298,30 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun GlassAppBackground(content: @Composable () -> Unit) {
+    val darkTheme = isSystemInDarkTheme()
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val highlightColor = if (darkTheme) LeafGreen.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.42f)
+    val accentColor = if (darkTheme) MintGreen.copy(alpha = 0.12f) else MintGreen.copy(alpha = 0.62f)
+    val lowerGlowColor = if (darkTheme) Color.White.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.34f)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(SoftGreen)
+            .background(backgroundColor)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCircle(
-                color = Color.White.copy(alpha = 0.42f),
+                color = highlightColor,
                 radius = size.minDimension * 0.36f,
                 center = Offset(size.width * 0.08f, size.height * 0.02f)
             )
             drawCircle(
-                color = MintGreen.copy(alpha = 0.62f),
+                color = accentColor,
                 radius = size.minDimension * 0.34f,
                 center = Offset(size.width * 0.96f, size.height * 0.36f)
             )
             drawCircle(
-                color = Color.White.copy(alpha = 0.34f),
+                color = lowerGlowColor,
                 radius = size.minDimension * 0.28f,
                 center = Offset(size.width * 0.24f, size.height * 0.92f)
             )
@@ -283,7 +331,11 @@ private fun GlassAppBackground(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun FarmerAuthApp(modifier: Modifier = Modifier) {
+private fun FarmerAuthApp(
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val database = remember { FarmlandInspectionDatabase.get(context) }
@@ -500,6 +552,8 @@ private fun FarmerAuthApp(modifier: Modifier = Modifier) {
                 isSkipRoleSelection = false
                 route = AuthRoute.Login
             },
+            themeMode = themeMode,
+            onThemeModeChange = onThemeModeChange,
             modifier = modifier
         )
     }
@@ -1331,9 +1385,11 @@ private fun String.extractGoogleSubject(): String {
 
 @Composable
 @OptIn(ExperimentalSharedTransitionApi::class)
-fun RouteDiscoveryScreen(
+private fun RouteDiscoveryScreen(
     farmer: FarmerProfile? = null,
     onLogout: () -> Unit = {},
+    themeMode: ThemeMode = ThemeMode.System,
+    onThemeModeChange: (ThemeMode) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1622,6 +1678,8 @@ fun RouteDiscoveryScreen(
                         composable(DashboardTab.Settings.route) {
                             SettingsScene(
                                 currentRole = currentRole,
+                                themeMode = themeMode,
+                                onThemeModeChange = onThemeModeChange,
                                 onLogout = onLogout,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -1854,7 +1912,7 @@ private fun FarmerFilterChip(
             .background(if (selected) DeepGreen else Color.White.copy(alpha = 0.72f))
             .border(
                 width = 1.dp,
-                color = if (selected) DeepGreen else GlassStroke,
+                color = if (selected) DeepGreen else glassStrokeColor(),
                 shape = RoundedCornerShape(999.dp)
             )
             .clickable(onClick = onClick)
@@ -2015,8 +2073,8 @@ private fun WeatherCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(30.dp))
-            .background(GlassWhite)
-            .border(1.dp, GlassStroke, RoundedCornerShape(30.dp))
+            .background(glassContainerColor())
+            .border(1.dp, glassStrokeColor(), RoundedCornerShape(30.dp))
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
@@ -2155,9 +2213,9 @@ private fun RouteCard(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, GlassStroke, RoundedCornerShape(32.dp)),
+            .border(1.dp, glassStrokeColor(), RoundedCornerShape(32.dp)),
         shape = RoundedCornerShape(32.dp),
-        color = GlassWhite,
+        color = glassContainerColor(),
         shadowElevation = 0.dp
     ) {
         Column(
@@ -3168,6 +3226,8 @@ private fun FarmlandImage(
 @Composable
 private fun SettingsScene(
     currentRole: UserRole,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -3187,6 +3247,10 @@ private fun SettingsScene(
             SettingsRow("資料儲存", "本機 Room Database")
             SettingsRow("路徑規劃", "巡檢點與地圖路徑")
             Spacer(modifier = Modifier.height(8.dp))
+            ThemeModeSetting(
+                selectedMode = themeMode,
+                onModeSelected = onThemeModeChange
+            )
             LogoutButton(onClick = onLogout)
         }
     }
@@ -3197,6 +3261,57 @@ private fun UserRole.toDisplayName(): String {
         UserRole.FARMER -> "農民"
         UserRole.CLEANER -> "清潔團隊"
         UserRole.ADMIN -> "管理員"
+    }
+}
+
+@Composable
+private fun ThemeModeSetting(
+    selectedMode: ThemeMode,
+    onModeSelected: (ThemeMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "外觀模式",
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
+                .border(1.dp, glassStrokeColor(), RoundedCornerShape(16.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            ThemeMode.entries.forEach { mode ->
+                val selected = selectedMode == mode
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (selected) DeepGreen else Color.Transparent)
+                        .clickable { onModeSelected(mode) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = mode.label,
+                        color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (selected) FontWeight.Black else FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -3232,8 +3347,8 @@ private fun GlassPanel(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(32.dp))
-            .background(GlassWhite)
-            .border(1.dp, GlassStroke, RoundedCornerShape(32.dp))
+            .background(glassContainerColor())
+            .border(1.dp, glassStrokeColor(), RoundedCornerShape(32.dp))
     ) {
         content()
     }
@@ -4050,7 +4165,7 @@ private fun createPriorityMarkerIcon(
 @Preview(showBackground = true)
 @Composable
 fun BauhausPreview() {
-    BauhausTheme {
+    BauhausRouteTheme {
         GlassAppBackground {
             RouteDiscoveryScreen(
                 modifier = Modifier
