@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="960" viewBox="0 0 1600 960" role="img" aria-labelledby="title desc">
+  <title id="title">BauhausRoute 簡易架構圖</title>
+  <desc id="desc">用淺顯易懂方式呈現 BauhausRoute 的使用者、App 畫面、本機資料與外部服務。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#334155"/>
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#0f172a" flood-opacity="0.14"/>
+    </filter>
+    <style>
+      .title { font: 800 46px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 22px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #475569; }
+      .section { font: 800 25px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #0f172a; }
+      .box-title { font: 800 23px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #0f172a; }
+      .box-text { font: 500 18px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #334155; }
+      .small { font: 500 16px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; fill: #64748b; }
+      .panel { fill: #ffffff; stroke: #dbe7e2; stroke-width: 1.5; rx: 26; filter: url(#shadow); }
+      .box { stroke: rgba(15,23,42,0.10); stroke-width: 1.5; rx: 18; filter: url(#shadow); }
+      .arrow { fill: none; stroke: #334155; stroke-width: 3; marker-end: url(#arrow); }
+      .soft-arrow { fill: none; stroke: #64748b; stroke-width: 2.4; stroke-dasharray: 8 8; marker-end: url(#arrow); }
+      .white { fill: #ffffff; font: 800 21px "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="960" fill="#f8fafc"/>
+  <rect width="1600" height="960" fill="#edf7f2" opacity="0.82"/>
+
+  <text x="80" y="82" class="title">BauhausRoute 簡易架構圖</text>
+  <text x="80" y="122" class="subtitle">從使用者操作到資料儲存、天氣查詢與路線規劃的整體流程</text>
+
+  <!-- User -->
+  <rect x="70" y="190" width="250" height="585" class="panel"/>
+  <text x="110" y="242" class="section">1. 使用者</text>
+  <rect x="110" y="305" width="170" height="70" class="box" fill="#1f9d73"/>
+  <text x="153" y="348" class="white">農民</text>
+  <rect x="110" y="440" width="170" height="70" class="box" fill="#2563eb"/>
+  <text x="133" y="483" class="white">清運團隊</text>
+  <rect x="110" y="575" width="170" height="70" class="box" fill="#7c3aed"/>
+  <text x="153" y="618" class="white">管理者</text>
+  <text x="105" y="710" class="small">登入後依角色進入不同功能</text>
+
+  <!-- App -->
+  <rect x="380" y="190" width="430" height="585" class="panel"/>
+  <text x="420" y="242" class="section">2. App 畫面與功能</text>
+  <rect x="425" y="295" width="340" height="92" class="box" fill="#e0f2fe"/>
+  <text x="455" y="331" class="box-title">登入與角色選擇</text>
+  <text x="455" y="362" class="box-text">帳密登入、Google 登入、選擇身分</text>
+
+  <rect x="425" y="425" width="340" height="110" class="box" fill="#fef3c7"/>
+  <text x="455" y="461" class="box-title">主要畫面</text>
+  <text x="455" y="492" class="box-text">首頁、狀態、設定、農地詳情</text>
+  <text x="455" y="518" class="box-text">底部導覽與畫面切換</text>
+
+  <rect x="425" y="575" width="340" height="125" class="box" fill="#ede9fe"/>
+  <text x="455" y="611" class="box-title">核心功能</text>
+  <text x="455" y="642" class="box-text">新增巡檢照片、讀取 GPS</text>
+  <text x="455" y="668" class="box-text">查看天氣、規劃清運路線</text>
+
+  <!-- Local data -->
+  <rect x="870" y="190" width="300" height="585" class="panel"/>
+  <text x="910" y="242" class="section">3. 本機資料</text>
+  <rect x="910" y="300" width="220" height="82" class="box" fill="#dcfce7"/>
+  <text x="948" y="333" class="box-title">Room Database</text>
+  <text x="945" y="363" class="box-text">手機內的資料庫</text>
+
+  <rect x="910" y="430" width="220" height="62" class="box" fill="#dbeafe"/>
+  <text x="964" y="468" class="box-title">帳號資料</text>
+  <rect x="910" y="530" width="220" height="62" class="box" fill="#bbf7d0"/>
+  <text x="946" y="568" class="box-title">農地巡檢紀錄</text>
+  <rect x="910" y="630" width="220" height="62" class="box" fill="#ddd6fe"/>
+  <text x="964" y="668" class="box-title">清運任務</text>
+
+  <!-- Services -->
+  <rect x="1230" y="190" width="300" height="585" class="panel"/>
+  <text x="1270" y="242" class="section">4. 外部 / 手機服務</text>
+  <rect x="1270" y="300" width="220" height="62" class="box" fill="#0ea5e9"/>
+  <text x="1320" y="339" class="white">Google 登入</text>
+  <rect x="1270" y="405" width="220" height="62" class="box" fill="#16a34a"/>
+  <text x="1300" y="444" class="white">中央氣象署天氣</text>
+  <rect x="1270" y="510" width="220" height="62" class="box" fill="#ea580c"/>
+  <text x="1322" y="549" class="white">OSRM 路線</text>
+  <rect x="1270" y="615" width="220" height="62" class="box" fill="#475569"/>
+  <text x="1296" y="654" class="white">相簿 / GPS / 地圖</text>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M280 340 C330 340 365 341 425 341"/>
+  <path class="arrow" d="M280 475 C335 475 365 480 425 480"/>
+  <path class="arrow" d="M280 610 C335 610 365 638 425 638"/>
+
+  <path class="arrow" d="M765 341 C810 341 850 341 910 341"/>
+  <path class="arrow" d="M765 638 C820 638 850 561 910 561"/>
+  <path class="arrow" d="M765 638 C820 638 850 661 910 661"/>
+
+  <path class="soft-arrow" d="M765 341 C970 341 1110 331 1270 331"/>
+  <path class="soft-arrow" d="M765 638 C980 638 1110 436 1270 436"/>
+  <path class="soft-arrow" d="M765 638 C980 638 1110 541 1270 541"/>
+  <path class="soft-arrow" d="M765 638 C980 638 1110 646 1270 646"/>
+
+  <!-- Bottom process -->
+  <rect x="120" y="825" width="1360" height="80" rx="22" fill="#0f172a" opacity="0.92"/>
+  <text x="155" y="858" class="white">簡單資料流程：</text>
+  <text x="325" y="858" class="white">登入</text>
+  <text x="410" y="858" class="white">→</text>
+  <text x="455" y="858" class="white">拍照 / 定位</text>
+  <text x="610" y="858" class="white">→</text>
+  <text x="655" y="858" class="white">存進手機資料庫</text>
+  <text x="870" y="858" class="white">→</text>
+  <text x="915" y="858" class="white">查天氣 / 算路線</text>
+  <text x="1140" y="858" class="white">→</text>
+  <text x="1185" y="858" class="white">顯示給使用者</text>
+
+  <text x="80" y="930" class="small">主要程式來源：MainActivity.kt、FarmlandInspectionDatabase.kt、FarmerLocalStore.kt、RoutePlanner.kt、RoadRouteService.kt、CwaWeatherService.kt</text>
+</svg>

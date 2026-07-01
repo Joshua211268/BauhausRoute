@@ -13,6 +13,7 @@ BauhausRoute 是一款以農地巡檢、環境通報與清運路線規劃為核�
 - 串接 OSRM 規劃道路路線，失敗時改用距離估算
 - 串接中央氣象署 Open Data，提供天氣與作業建議
 - 使用 Room Database 儲存本機帳號、巡檢資料與清運任務
+- 支援明亮、深色與跟隨系統外觀模式
 
 ## 技術棧
 
@@ -28,6 +29,15 @@ BauhausRoute 是一款以農地巡檢、環境通報與清運路線規劃為核�
 | 天氣 | 中央氣象署 Open Data API |
 | 圖片 | Coil、ExifInterface |
 | 登入 | Android Credential Manager、Google ID |
+
+## 架構概覽
+
+![BauhausRoute 簡易架構圖](./bauhausroute-simple-architecture.svg)
+
+更多架構說明請參考：
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md)：完整系統架構與資料流
+- [ARCHITECTURE_SIMPLE.md](./ARCHITECTURE_SIMPLE.md)：簡化版架構說明
 
 ## 環境需求
 
@@ -97,22 +107,39 @@ BauhausRoute/
 │       │   └── FarmerLocalStore.kt
 │       └── res/
 ├── gradle/
+├── ARCHITECTURE.md
+├── ARCHITECTURE_SIMPLE.md
+├── bauhausroute-architecture.svg
+├── bauhausroute-simple-architecture.svg
 ├── build.gradle.kts
 ├── settings.gradle.kts
 └── README.md
 ```
 
-## GitHub 上傳建議
+## GitHub 分支
 
-目前此資料夾尚未初始化 Git。若要建立分支並準備第一次上傳，可以使用：
+目前主要更新分支：
 
-```powershell
-git init
-git switch -c chore/github-setup
-git status
+```text
+docs/architecture-and-ui-polish
 ```
 
-確認不要提交以下內容：
+此分支包含：
+
+- README 與架構文件整理
+- 完整版與簡化版架構圖
+- UI 互動穩定性修正
+- 深色 / 明亮 / 跟隨系統外觀模式
+
+推送目前分支：
+
+```powershell
+git push
+```
+
+## 不應提交的內容
+
+請確認不要提交以下內容：
 
 - `local.properties`
 - `.gradle/`
@@ -121,20 +148,6 @@ git status
 - `build/`
 - `app/build/`
 - `_github_upload_20260524-220605/`
-
-加入檔案並提交：
-
-```powershell
-git add .
-git commit -m "Initial Android project"
-```
-
-設定遠端 Repository 後推送：
-
-```powershell
-git remote add origin <your-github-repo-url>
-git push -u origin chore/github-setup
-```
 
 ## 公開前檢查清單
 

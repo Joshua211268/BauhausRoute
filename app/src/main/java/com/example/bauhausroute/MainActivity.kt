@@ -23,6 +23,7 @@ import android.provider.OpenableColumns
 import android.util.Base64
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -109,6 +110,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -165,13 +167,69 @@ private val MintGreen = Color(0xFFDDF7E8)
 private val WarningRed = Color(0xFFE84B5F)
 
 @Composable
+private fun isAppInDarkTheme(): Boolean {
+    return MaterialTheme.colorScheme.background.luminance() < 0.5f
+}
+
+@Composable
+private fun readableInkColor(): Color {
+    return if (isAppInDarkTheme()) MaterialTheme.colorScheme.onSurface else ExpressiveInk
+}
+
+@Composable
+private fun readableMutedColor(): Color {
+    return if (isAppInDarkTheme()) MaterialTheme.colorScheme.onSurfaceVariant else ExpressiveMuted
+}
+
+@Composable
+private fun elevatedPanelColor(): Color {
+    return if (isAppInDarkTheme()) MaterialTheme.colorScheme.surface else Color.White
+}
+
+@Composable
+private fun softPanelColor(): Color {
+    return if (isAppInDarkTheme()) {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.98f)
+    } else {
+        Color.White.copy(alpha = 0.72f)
+    }
+}
+
+@Composable
 private fun glassContainerColor(): Color {
-    return MaterialTheme.colorScheme.surface.copy(alpha = if (isSystemInDarkTheme()) 0.9f else 0.78f)
+    return MaterialTheme.colorScheme.surface.copy(alpha = if (isAppInDarkTheme()) 0.98f else 0.78f)
 }
 
 @Composable
 private fun glassStrokeColor(): Color {
-    return MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isSystemInDarkTheme()) 0.86f else 0.72f)
+    return MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (isAppInDarkTheme()) 1f else 0.72f)
+}
+
+@Composable
+private fun authBackgroundColor(): Color {
+    return if (isAppInDarkTheme()) MaterialTheme.colorScheme.background else Color(0xFFF8FAFD)
+}
+
+@Composable
+private fun logoContainerColor(): Color {
+    return if (isAppInDarkTheme()) MaterialTheme.colorScheme.surfaceVariant else MintGreen
+}
+
+@Composable
+private fun ResetPickerStateOnResume(onReset: () -> Unit) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val latestOnReset by rememberUpdatedState(onReset)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                latestOnReset()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 }
 
 data class GeoPointData(
@@ -569,7 +627,7 @@ private fun RoleSelectionScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(authBackgroundColor())
             .padding(horizontal = 28.dp)
     ) {
         IconButton(
@@ -578,10 +636,10 @@ private fun RoleSelectionScreen(
                 .padding(top = 14.dp)
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFF3F6F4))
+                .background(softPanelColor())
                 .align(Alignment.TopStart)
         ) {
-            Text(text = "<", color = ExpressiveInk, style = MaterialTheme.typography.titleLarge)
+            Text(text = "<", color = readableInkColor(), style = MaterialTheme.typography.titleLarge)
         }
         Column(
             modifier = Modifier
@@ -593,27 +651,27 @@ private fun RoleSelectionScreen(
                 modifier = Modifier
                     .size(74.dp)
                     .clip(RoundedCornerShape(18.dp))
-                    .background(MintGreen)
+                    .background(logoContainerColor())
                     .padding(16.dp)
             )
             Spacer(modifier = Modifier.height(18.dp))
             Text(
                 text = "農地巡檢管理",
-                color = ExpressiveInk,
+                color = readableInkColor(),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Black
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "選擇身分以進入對應功能",
-                color = ExpressiveMuted,
+                color = readableMutedColor(),
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(58.dp))
             Text(
                 text = "請選擇您的身分",
-                color = ExpressiveInk,
+                color = readableInkColor(),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -649,7 +707,7 @@ private fun RoleCard(
             .height(76.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
-        color = Color.White,
+        color = elevatedPanelColor(),
         shadowElevation = 4.dp
     ) {
         Row(
@@ -670,10 +728,10 @@ private fun RoleCard(
                     .padding(start = 14.dp)
                     .weight(1f)
             ) {
-                Text(text = title, color = ExpressiveInk, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                Text(text = subtitle, color = ExpressiveMuted, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                Text(text = title, color = readableInkColor(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                Text(text = subtitle, color = readableMutedColor(), style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }
-            Text(text = ">", color = ExpressiveMuted, style = MaterialTheme.typography.headlineSmall)
+            Text(text = ">", color = readableMutedColor(), style = MaterialTheme.typography.headlineSmall)
         }
     }
 }
@@ -693,7 +751,7 @@ private fun LoginScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF8FAFD))
+            .background(authBackgroundColor())
             .padding(horizontal = 24.dp)
     ) {
         Column(
@@ -707,20 +765,20 @@ private fun LoginScreen(
                 modifier = Modifier
                     .size(76.dp)
                     .clip(RoundedCornerShape(18.dp))
-                    .background(MintGreen)
+                    .background(logoContainerColor())
                     .padding(16.dp)
             )
             Spacer(modifier = Modifier.height(18.dp))
             Text(
                 text = "農地巡檢管理",
-                color = ExpressiveInk,
+                color = readableInkColor(),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Black
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "登入後即可管理巡檢任務",
-                color = ExpressiveMuted,
+                color = readableMutedColor(),
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(modifier = Modifier.height(34.dp))
@@ -766,7 +824,7 @@ private fun LoginScreen(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 18.dp)
         ) {
-            Text(text = "Skip 測試模式", color = ExpressiveMuted, fontWeight = FontWeight.Bold)
+            Text(text = "Skip 測試模式", color = readableMutedColor(), fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -784,13 +842,13 @@ private fun GoogleSignInButton(
             .height(54.dp)
             .clickable(onClick = guardedOnClick),
         shape = RoundedCornerShape(16.dp),
-        color = Color.White,
+        color = elevatedPanelColor(),
         shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .border(1.dp, Color(0xFFE3E6EA), RoundedCornerShape(16.dp))
+                .border(1.dp, glassStrokeColor(), RoundedCornerShape(16.dp))
                 .padding(horizontal = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
@@ -812,7 +870,7 @@ private fun GoogleSignInButton(
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = "使用 Google 帳號登入",
-                color = ExpressiveInk,
+                color = readableInkColor(),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Black,
                 maxLines = 1,
@@ -844,7 +902,7 @@ private fun RegisterScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF7F8FC))
+            .background(authBackgroundColor())
             .padding(horizontal = 22.dp, vertical = 20.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -853,18 +911,18 @@ private fun RegisterScreen(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(Color.White)
+                    .background(softPanelColor())
             ) {
-                Text(text = "<", color = ExpressiveInk, style = MaterialTheme.typography.titleLarge)
+                Text(text = "<", color = readableInkColor(), style = MaterialTheme.typography.titleLarge)
             }
             Column(modifier = Modifier.padding(start = 10.dp)) {
                 Text(
                     text = "農民註冊",
-                    color = ExpressiveInk,
+                    color = readableInkColor(),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black
                 )
-                Text(text = "步驟 1/2", color = ExpressiveMuted, style = MaterialTheme.typography.labelMedium)
+                Text(text = "步驟 1/2", color = readableMutedColor(), style = MaterialTheme.typography.labelMedium)
             }
         }
         Spacer(modifier = Modifier.height(10.dp))
@@ -962,7 +1020,7 @@ private fun CleanerTeamRegisterScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF7F8FC))
+            .background(authBackgroundColor())
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 22.dp, vertical = 18.dp)
     ) {
@@ -972,18 +1030,18 @@ private fun CleanerTeamRegisterScreen(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(Color.White)
+                    .background(softPanelColor())
             ) {
-                Text(text = "<", color = ExpressiveInk, style = MaterialTheme.typography.titleLarge)
+                Text(text = "<", color = readableInkColor(), style = MaterialTheme.typography.titleLarge)
             }
             Column(modifier = Modifier.padding(start = 10.dp)) {
                 Text(
                     text = "清潔團隊註冊",
-                    color = ExpressiveInk,
+                    color = readableInkColor(),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black
                 )
-                Text(text = "建立團隊基本資料", color = ExpressiveMuted, style = MaterialTheme.typography.labelMedium)
+                Text(text = "建立團隊基本資料", color = readableMutedColor(), style = MaterialTheme.typography.labelMedium)
             }
         }
         Spacer(modifier = Modifier.height(20.dp))
@@ -1038,7 +1096,7 @@ private fun CleanerTeamRegisterScreen(
         }
         Text(
             text = "請先選擇縣市地區",
-            color = ExpressiveMuted,
+            color = readableMutedColor(),
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(top = 6.dp)
         )
@@ -1075,14 +1133,14 @@ private fun TeamSizeStepper(
         modifier = modifier
             .height(52.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
-            .border(1.dp, Color(0xFFE3E6EA), RoundedCornerShape(16.dp))
+            .background(elevatedPanelColor())
+            .border(1.dp, glassStrokeColor(), RoundedCornerShape(16.dp))
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = "$value 人",
-            color = ExpressiveInk,
+            color = readableInkColor(),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f)
@@ -1106,9 +1164,9 @@ private fun StepperButton(
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = Color(0xFFE9ECEF),
-            contentColor = ExpressiveInk,
-            disabledContainerColor = Color(0xFFF2F4F6),
-            disabledContentColor = ExpressiveMuted.copy(alpha = 0.38f)
+            contentColor = readableInkColor(),
+            disabledContainerColor = softPanelColor(),
+            disabledContentColor = readableMutedColor().copy(alpha = 0.48f)
         ),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
     ) {
@@ -1133,22 +1191,22 @@ private fun AreaDropdown(
                 .fillMaxWidth()
                 .height(52.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(if (enabled) Color.White else Color.White.copy(alpha = 0.58f))
-                .border(1.dp, Color(0xFFE3E6EA), RoundedCornerShape(16.dp))
+                .background(if (enabled) elevatedPanelColor() else softPanelColor())
+                .border(1.dp, glassStrokeColor(), RoundedCornerShape(16.dp))
                 .clickable(enabled = enabled && options.isNotEmpty()) { expanded = true }
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = value.ifBlank { placeholder },
-                color = if (value.isBlank()) ExpressiveMuted.copy(alpha = 0.48f) else DeepGreen,
+                color = if (value.isBlank()) readableMutedColor().copy(alpha = 0.66f) else DeepGreen,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            Text(text = "⌄", color = ExpressiveMuted, style = MaterialTheme.typography.titleMedium)
+            Text(text = "⌄", color = readableMutedColor(), style = MaterialTheme.typography.titleMedium)
         }
         DropdownMenu(
             expanded = expanded,
@@ -1171,7 +1229,7 @@ private fun AreaDropdown(
 private fun FormLabel(text: String) {
     Text(
         text = text,
-        color = ExpressiveInk,
+        color = readableInkColor(),
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.Black,
         modifier = Modifier.padding(top = 10.dp, bottom = 7.dp)
@@ -1194,17 +1252,17 @@ private fun MintTextField(
         modifier = modifier
             .fillMaxWidth()
             .height(58.dp),
-        placeholder = { Text(text = label, color = ExpressiveMuted.copy(alpha = 0.42f)) },
+        placeholder = { Text(text = label, color = readableMutedColor().copy(alpha = 0.66f)) },
         singleLine = true,
         shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = Color.White,
-            unfocusedContainerColor = Color.White.copy(alpha = 0.78f),
+            focusedContainerColor = elevatedPanelColor(),
+            unfocusedContainerColor = elevatedPanelColor(),
             focusedBorderColor = LeafGreen,
-            unfocusedBorderColor = Color(0xFFE3E6EA),
+            unfocusedBorderColor = glassStrokeColor(),
             cursorColor = DeepGreen,
-            focusedTextColor = ExpressiveInk,
-            unfocusedTextColor = ExpressiveInk
+            focusedTextColor = readableInkColor(),
+            unfocusedTextColor = readableInkColor()
         ),
         keyboardOptions = KeyboardOptions(
             keyboardType = keyboardType,
@@ -1267,6 +1325,8 @@ private fun EyeToggleButton(
     visible: Boolean,
     onClick: () -> Unit
 ) {
+    val hiddenEyeColor = readableMutedColor()
+
     IconButton(onClick = onClick) {
         Canvas(
             modifier = Modifier
@@ -1275,20 +1335,20 @@ private fun EyeToggleButton(
         ) {
             val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
             drawOval(
-                color = ExpressiveMuted,
+                color = hiddenEyeColor,
                 topLeft = Offset(size.width * 0.12f, size.height * 0.28f),
                 size = Size(size.width * 0.76f, size.height * 0.44f),
                 style = stroke
             )
             drawCircle(
-                color = if (visible) DeepGreen else ExpressiveMuted,
+                color = if (visible) DeepGreen else hiddenEyeColor,
                 radius = size.minDimension * 0.13f,
                 center = center,
                 style = stroke
             )
             if (!visible) {
                 drawLine(
-                    color = ExpressiveMuted,
+                    color = hiddenEyeColor,
                     start = Offset(size.width * 0.2f, size.height * 0.82f),
                     end = Offset(size.width * 0.82f, size.height * 0.18f),
                     strokeWidth = 2.dp.toPx(),
@@ -1439,6 +1499,10 @@ private fun RouteDiscoveryScreen(
         DashboardTab.entries
     } else {
         listOf(DashboardTab.Home, DashboardTab.Settings)
+    }
+
+    ResetPickerStateOnResume {
+        isDocumentPickerOpen = false
     }
 
     fun refreshWeatherFromDeviceLocation() {
@@ -1753,14 +1817,14 @@ private fun DashboardHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                color = ExpressiveInk,
+                color = readableInkColor(),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black,
                 maxLines = 1
             )
             Text(
                 text = subtitle,
-                color = ExpressiveMuted,
+                color = readableMutedColor(),
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1771,7 +1835,7 @@ private fun DashboardHeader(
         Surface(
             modifier = Modifier
                 .size(50.dp)
-                .background(Color.White.copy(alpha = 0.54f), CircleShape)
+                .background(softPanelColor(), CircleShape)
                 .clickable(onClick = actionClick),
             shape = CircleShape,
             color = Color.Transparent,
@@ -1831,7 +1895,7 @@ private fun FarmerRoleHome(
         Surface(
             modifier = Modifier.fillMaxSize(),
             shape = RoundedCornerShape(28.dp),
-            color = Color.White,
+            color = elevatedPanelColor(),
             shadowElevation = 8.dp
         ) {
             if (filteredFarmlands.isEmpty()) {
@@ -1909,7 +1973,7 @@ private fun FarmerFilterChip(
         modifier = modifier
             .height(40.dp)
             .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) DeepGreen else Color.White.copy(alpha = 0.72f))
+            .background(if (selected) DeepGreen else softPanelColor())
             .border(
                 width = 1.dp,
                 color = if (selected) DeepGreen else glassStrokeColor(),
@@ -1921,7 +1985,7 @@ private fun FarmerFilterChip(
     ) {
         Text(
             text = label,
-            color = if (selected) Color.White else ExpressiveInk,
+            color = if (selected) Color.White else readableInkColor(),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Black,
             maxLines = 1,
@@ -1957,7 +2021,7 @@ private fun FarmerEmptyInspectionState(modifier: Modifier = Modifier) {
         Spacer(modifier = Modifier.height(18.dp))
         Text(
             text = "尚無巡檢資料",
-            color = ExpressiveInk,
+            color = readableInkColor(),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center
@@ -1965,7 +2029,7 @@ private fun FarmerEmptyInspectionState(modifier: Modifier = Modifier) {
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "新增農地後即可查看巡檢結果",
-            color = ExpressiveMuted,
+            color = readableMutedColor(),
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center
         )
@@ -2099,13 +2163,13 @@ private fun WeatherCard(
             ) {
                 Text(
                     text = weather.condition,
-                    color = ExpressiveInk,
+                    color = readableInkColor(),
                     style = MaterialTheme.typography.titleLarge,
                     maxLines = 1
                 )
                 Text(
                     text = weather.locationLabel,
-                    color = ExpressiveMuted,
+                    color = readableMutedColor(),
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -2191,7 +2255,7 @@ private fun WeatherIcon(
 private fun WeatherMetric(text: String) {
     Text(
         text = text,
-        color = ExpressiveMuted,
+        color = readableMutedColor(),
         style = MaterialTheme.typography.labelLarge,
         maxLines = 1
     )
@@ -2266,7 +2330,7 @@ private fun RouteCard(
                     item {
                         Text(
                             text = message,
-                            color = ExpressiveMuted,
+                            color = readableMutedColor(),
                             style = MaterialTheme.typography.labelLarge,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -2289,13 +2353,13 @@ private fun RouteCardHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "路徑規劃",
-                color = ExpressiveInk,
+                color = readableInkColor(),
                 style = MaterialTheme.typography.titleLarge,
                 maxLines = 1
             )
             Text(
                 text = "共 $stopCount 個巡檢點",
-                color = ExpressiveMuted,
+                color = readableMutedColor(),
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2311,7 +2375,7 @@ private fun GlassDivider() {
         modifier = Modifier
             .fillMaxWidth()
             .height(1.dp)
-            .background(Color.White.copy(alpha = 0.72f))
+            .background(glassStrokeColor())
     )
 }
 
@@ -2359,6 +2423,8 @@ private fun MapPreview(
 
 @Composable
 private fun TemplateMap(modifier: Modifier = Modifier) {
+    val mapRoadHighlight = elevatedPanelColor().copy(alpha = if (isAppInDarkTheme()) 0.92f else 0.68f)
+
     Canvas(modifier = modifier) {
         val roadColor = Color(0xFFFFF1C7).copy(alpha = 0.82f)
 
@@ -2370,7 +2436,7 @@ private fun TemplateMap(modifier: Modifier = Modifier) {
             cap = StrokeCap.Round
         )
         drawLine(
-            color = Color.White.copy(alpha = 0.68f),
+            color = mapRoadHighlight,
             start = Offset(size.width * 0.05f, size.height * 0.2f),
             end = Offset(size.width * 0.9f, size.height * 0.82f),
             strokeWidth = 9.dp.toPx(),
@@ -2413,18 +2479,18 @@ private fun MapZoomControls(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        color = Color.White.copy(alpha = 0.86f),
+        color = elevatedPanelColor().copy(alpha = if (isAppInDarkTheme()) 0.98f else 0.86f),
         shadowElevation = 5.dp
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "+", color = ExpressiveInk, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 9.dp))
+            Text(text = "+", color = readableInkColor(), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 9.dp))
             Box(
                 modifier = Modifier
                     .height(1.dp)
                     .width(28.dp)
                     .background(Color(0xFFE0E7DF))
             )
-            Text(text = "−", color = ExpressiveInk, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 9.dp))
+            Text(text = "−", color = readableInkColor(), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 9.dp))
         }
     }
 }
@@ -2465,7 +2531,7 @@ private fun StopRow(
         ) {
             Text(
                 text = stop.name,
-                color = ExpressiveInk,
+                color = readableInkColor(),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -2473,7 +2539,7 @@ private fun StopRow(
             )
             Text(
                 text = "${stop.area} · 巡檢點 ${stop.code}",
-                color = ExpressiveMuted,
+                color = readableMutedColor(),
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2488,7 +2554,7 @@ private fun StopRow(
         )
         Text(
             text = "${stop.items} 件",
-            color = ExpressiveMuted,
+            color = readableMutedColor(),
             style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.padding(start = 8.dp)
         )
@@ -2612,14 +2678,14 @@ private fun MissingFarmlandScene(
         ) {
             Text(
                 text = "找不到農地資料",
-                color = ExpressiveInk,
+                color = readableInkColor(),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "此筆農地可能已刪除，請返回列表。",
-                color = ExpressiveMuted,
+                color = readableMutedColor(),
                 style = MaterialTheme.typography.bodyLarge
             )
             Spacer(modifier = Modifier.height(18.dp))
@@ -2639,14 +2705,14 @@ private fun EmptyFarmlandState(
     ) {
         Text(
             text = "尚無農地巡檢",
-            color = ExpressiveInk,
+            color = readableInkColor(),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Black
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "尚未加入 HEIF 巡檢照片",
-            color = ExpressiveMuted,
+            color = readableMutedColor(),
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center
         )
@@ -2676,7 +2742,7 @@ private fun FarmlandGridCard(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = farmland.regionName,
-            color = ExpressiveInk,
+            color = readableInkColor(),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Black,
             maxLines = 1,
@@ -2684,7 +2750,7 @@ private fun FarmlandGridCard(
         )
         Text(
             text = "更新日期：${farmland.timestampMillis.toDateLabel()}",
-            color = ExpressiveMuted,
+            color = readableMutedColor(),
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1
         )
@@ -2709,6 +2775,12 @@ private fun FarmlandDetailScene(
         initialPage = (detailImages.size - 1).coerceAtLeast(0),
         pageCount = { detailImages.size.coerceAtLeast(1) }
     )
+    BackHandler(enabled = isImagePickerOpen) {
+        isImagePickerOpen = false
+    }
+    ResetPickerStateOnResume {
+        isImagePickerOpen = false
+    }
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -2756,7 +2828,7 @@ private fun FarmlandDetailScene(
                     }
                     Text(
                         text = "農地詳情",
-                        color = ExpressiveInk,
+                        color = readableInkColor(),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Black,
                         modifier = Modifier.weight(1f),
@@ -2784,13 +2856,13 @@ private fun FarmlandDetailScene(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = farmland.regionName,
-                            color = ExpressiveInk,
+                            color = readableInkColor(),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Black
                         )
                         Text(
                             text = "農地位置",
-                            color = ExpressiveMuted,
+                            color = readableMutedColor(),
                             style = MaterialTheme.typography.labelLarge
                         )
                     }
@@ -2801,7 +2873,7 @@ private fun FarmlandDetailScene(
                     }
                     Text(
                         text = farmland.coordinateLabel(),
-                        color = ExpressiveMuted,
+                        color = readableMutedColor(),
                         style = MaterialTheme.typography.labelLarge,
                         textAlign = TextAlign.End,
                         modifier = Modifier.weight(1f)
@@ -2826,7 +2898,7 @@ private fun FarmlandDetailScene(
                     InspectionIndicator(
                         icon = "♻",
                         label = "${farmland.trashCount} 件垃圾",
-                        color = ExpressiveInk,
+                        color = readableInkColor(),
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -2843,13 +2915,13 @@ private fun FarmlandDetailScene(
                 ) {
                     Text(
                         text = "巡檢座標\n${farmland.coordinateLabel()}",
-                        color = ExpressiveMuted,
+                        color = readableMutedColor(),
                         style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.weight(1f)
                     )
                     Text(
                         text = "巡檢更新時間\n${farmland.timestampMillis.toDateTimeLabel()}",
-                        color = ExpressiveMuted,
+                        color = readableMutedColor(),
                         style = MaterialTheme.typography.labelLarge,
                         textAlign = TextAlign.End,
                         modifier = Modifier.weight(1f)
@@ -2865,14 +2937,14 @@ private fun FarmlandDetailScene(
             title = {
                 Text(
                     text = "刪除農地巡檢？",
-                    color = ExpressiveInk,
+                    color = readableInkColor(),
                     fontWeight = FontWeight.Black
                 )
             },
             text = {
                 Text(
                     text = "確定要刪除 ${farmland.regionName} 的巡檢資料嗎？此動作無法復原。",
-                    color = ExpressiveMuted
+                    color = readableMutedColor()
                 )
             },
             confirmButton = {
@@ -2895,7 +2967,7 @@ private fun FarmlandDetailScene(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text(text = "取消", color = ExpressiveMuted, fontWeight = FontWeight.Bold)
+                    Text(text = "取消", color = readableMutedColor(), fontWeight = FontWeight.Bold)
                 }
             }
         )
@@ -3024,19 +3096,19 @@ private fun DescriptionBlock(description: String) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
-            .background(Color.White.copy(alpha = 0.62f))
+            .background(elevatedPanelColor().copy(alpha = if (isAppInDarkTheme()) 0.98f else 0.62f))
             .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 text = "巡檢描述",
-                color = ExpressiveInk,
+                color = readableInkColor(),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black
             )
             Text(
                 text = description,
-                color = ExpressiveMuted,
+                color = readableMutedColor(),
                 style = MaterialTheme.typography.bodyLarge
             )
         }
@@ -3053,12 +3125,31 @@ private fun AddFarmlandDialog(
     val scope = rememberCoroutineScope()
     var regionName by remember { mutableStateOf("") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
+    var isImagePickerOpen by remember { mutableStateOf(false) }
+    BackHandler(enabled = isImagePickerOpen) {
+        isImagePickerOpen = false
+    }
+    ResetPickerStateOnResume {
+        isImagePickerOpen = false
+    }
     val picker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
+        isImagePickerOpen = false
         if (uri != null) {
             persistImageReadPermission(context, uri)
             imageUri = uri
+        }
+    }
+
+    fun launchImagePicker() {
+        if (isImagePickerOpen) return
+        isImagePickerOpen = true
+        runCatching {
+            picker.launch(arrayOf("image/heif", "image/heic", "image/*"))
+        }.onFailure {
+            isImagePickerOpen = false
+            Toast.makeText(context, "無法開啟圖片選擇器，請稍後再試", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -3098,11 +3189,11 @@ private fun AddFarmlandDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "取消", color = ExpressiveMuted)
+                Text(text = "取消", color = readableMutedColor())
             }
         },
         title = {
-            Text(text = "新增農地", color = ExpressiveInk, fontWeight = FontWeight.Black)
+            Text(text = "新增農地", color = readableInkColor(), fontWeight = FontWeight.Black)
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -3112,7 +3203,8 @@ private fun AddFarmlandDialog(
                     label = "農地名稱"
                 )
                 Button(
-                    onClick = { picker.launch(arrayOf("image/heif", "image/heic", "image/*")) },
+                    onClick = ::launchImagePicker,
+                    enabled = !isImagePickerOpen,
                     colors = ButtonDefaults.buttonColors(containerColor = LeafGreen),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -3120,7 +3212,7 @@ private fun AddFarmlandDialog(
                 }
             }
         },
-        containerColor = Color(0xFFF7FCF9),
+        containerColor = elevatedPanelColor(),
         shape = RoundedCornerShape(24.dp)
     )
 }
@@ -3132,7 +3224,7 @@ private fun FarmlandImagePager(
     pagerState: PagerState,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier.background(MintGreen)) {
+    Box(modifier = modifier.background(if (isAppInDarkTheme()) MaterialTheme.colorScheme.surfaceVariant else MintGreen)) {
         if (imageUris.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -3181,7 +3273,7 @@ private fun FarmlandImage(
 
     if (imageUri.isNullOrBlank()) {
         Box(
-            modifier = modifier.background(MintGreen.copy(alpha = 0.62f)),
+            modifier = modifier.background((if (isAppInDarkTheme()) MaterialTheme.colorScheme.surfaceVariant else MintGreen).copy(alpha = if (isAppInDarkTheme()) 0.98f else 0.62f)),
             contentAlignment = Alignment.Center
         ) {
             AlbumIcon(
@@ -3238,7 +3330,7 @@ private fun SettingsScene(
         ) {
             Text(
                 text = "設定",
-                color = ExpressiveInk,
+                color = readableInkColor(),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Black
             )
@@ -3285,7 +3377,7 @@ private fun ThemeModeSetting(
                 .fillMaxWidth()
                 .height(46.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isAppInDarkTheme()) 0.98f else 0.72f))
                 .border(1.dp, glassStrokeColor(), RoundedCornerShape(16.dp))
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -3327,7 +3419,7 @@ private fun LogoutButton(
             .height(52.dp),
         shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color.White,
+            containerColor = elevatedPanelColor(),
             contentColor = WarningRed
         )
     ) {
@@ -3367,14 +3459,14 @@ private fun SettingsRow(
     ) {
         Text(
             text = label,
-            color = ExpressiveInk,
+            color = readableInkColor(),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f)
         )
         Text(
             text = value,
-            color = ExpressiveMuted,
+            color = readableMutedColor(),
             style = MaterialTheme.typography.labelLarge
         )
     }
@@ -3395,7 +3487,7 @@ private fun BottomNavigationBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(74.dp + bottomPadding)
-            .background(Color(0xFFF7FCF9).copy(alpha = 0.96f))
+            .background(elevatedPanelColor().copy(alpha = if (isAppInDarkTheme()) 0.99f else 0.96f))
     ) {
         Row(
             modifier = Modifier
@@ -3435,7 +3527,7 @@ private fun BottomNavItem(
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "bottomNavSelectedProgress"
     )
-    val contentColor = if (selected) DeepGreen else ExpressiveMuted.copy(alpha = 0.76f)
+    val contentColor = if (selected) DeepGreen else readableMutedColor().copy(alpha = 0.86f)
 
     Box(
         modifier = modifier
@@ -3459,7 +3551,7 @@ private fun BottomNavItem(
                         .fillMaxSize()
                         .scale(0.72f + selectedProgress * 0.28f)
                         .clip(RoundedCornerShape(999.dp))
-                        .background(MintGreen.copy(alpha = selectedProgress * 0.95f))
+                        .background((if (isAppInDarkTheme()) MaterialTheme.colorScheme.surfaceVariant else MintGreen).copy(alpha = selectedProgress * 0.95f))
                 )
                 BottomNavIcon(
                     tab = tab,
