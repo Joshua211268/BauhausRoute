@@ -149,7 +149,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.TileSourcePolicy
+import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
@@ -165,6 +166,24 @@ private val LeafGreen = Color(0xFF32C86E)
 private val DeepGreen = Color(0xFF168A4A)
 private val MintGreen = Color(0xFFDDF7E8)
 private val WarningRed = Color(0xFFE84B5F)
+
+// Keep a versioned cache namespace so responses cached before the compliant
+// User-Agent migration (including OSM's 403 warning image) are not reused.
+private val BauhausOsmTileSource = XYTileSource(
+    "BauhausOSM-v2",
+    0,
+    19,
+    256,
+    ".png",
+    arrayOf("https://tile.openstreetmap.org/"),
+    "© OpenStreetMap contributors",
+    TileSourcePolicy(
+        2,
+        TileSourcePolicy.FLAG_NO_BULK or
+            TileSourcePolicy.FLAG_NO_PREVENTIVE or
+            TileSourcePolicy.FLAG_USER_AGENT_MEANINGFUL
+    )
+)
 
 @Composable
 private fun isAppInDarkTheme(): Boolean {
@@ -3283,6 +3302,15 @@ private fun FarmlandImage(
         }
     } else {
         var fallbackBitmap by remember(imageUri) { mutableStateOf<Bitmap?>(null) }
+        var fallbackRequested by remember(imageUri) { mutableStateOf(false) }
+
+        LaunchedEffect(imageUri, fallbackRequested) {
+            if (fallbackRequested && fallbackBitmap == null) {
+                fallbackBitmap = withContext(Dispatchers.IO) {
+                    decodeSampledBitmap(context.contentResolver, Uri.parse(imageUri))
+                }
+            }
+        }
 
         if (fallbackBitmap != null) {
             Image(
@@ -3299,11 +3327,7 @@ private fun FarmlandImage(
                     .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                     .listener(
                         onError = { _, _ ->
-                            fallbackBitmap = runCatching {
-                                context.contentResolver.openInputStream(Uri.parse(imageUri))?.use { stream ->
-                                    BitmapFactory.decodeStream(stream)
-                                }
-                            }.getOrNull()
+                            fallbackRequested = true
                         }
                     )
                     .build(),
@@ -3665,12 +3689,20 @@ private fun BauhausRouteMap(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val mapView = remember {
-        Configuration.getInstance().userAgentValue = context.packageName
         MapView(context).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
+            setTileSource(BauhausOsmTileSource)
             setMultiTouchControls(true)
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             controller.setZoom(15.0)
+        }
+    }
+    val markerIcons = remember(markers) {
+        markers.map { marker ->
+            createPriorityMarkerIcon(
+                context = context,
+                priorityNumber = marker.priorityNumber,
+                severity = marker.severity
+            )
         }
     }
 
@@ -3689,41 +3721,48 @@ private fun BauhausRouteMap(
         }
     }
 
-    AndroidView(
-        modifier = modifier.clip(RoundedCornerShape(28.dp)),
-        factory = { mapView },
-        update = { view ->
-            view.overlays.clear()
+    Box(modifier = modifier.clip(RoundedCornerShape(28.dp))) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { mapView },
+            update = { view ->
+                view.overlays.clear()
 
-            if (markers.isNotEmpty()) {
-                view.controller.setCenter(markers.first().point)
-                view.controller.setZoom(15.0)
+                if (markers.isNotEmpty()) {
+                    view.controller.setCenter(markers.first().point)
+                    view.controller.setZoom(15.0)
 
-                val routeLine = Polyline().apply {
-                    setPoints(routePoints)
-                    outlinePaint.color = DeepGreen.toArgb()
-                    outlinePaint.strokeWidth = 8f
-                }
-                view.overlays.add(routeLine)
-
-                markers.forEach { mapMarker ->
-                    val marker = Marker(view).apply {
-                        position = mapMarker.point
-                        icon = createPriorityMarkerIcon(
-                            context = context,
-                            priorityNumber = mapMarker.priorityNumber,
-                            severity = mapMarker.severity
-                        )
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        title = "Priority ${mapMarker.priorityNumber}"
+                    val routeLine = Polyline().apply {
+                        setPoints(routePoints)
+                        outlinePaint.color = DeepGreen.toArgb()
+                        outlinePaint.strokeWidth = 8f
                     }
-                    view.overlays.add(marker)
-                }
-            }
+                    view.overlays.add(routeLine)
 
-            view.invalidate()
-        }
-    )
+                    markers.forEachIndexed { index, mapMarker ->
+                        val marker = Marker(view).apply {
+                            position = mapMarker.point
+                            icon = markerIcons[index]
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            title = "Priority ${mapMarker.priorityNumber}"
+                        }
+                        view.overlays.add(marker)
+                    }
+                }
+
+                view.invalidate()
+            }
+        )
+        Text(
+            text = "© OpenStreetMap contributors",
+            color = ExpressiveInk,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .background(Color.White.copy(alpha = 0.86f))
+                .padding(horizontal = 5.dp, vertical = 2.dp)
+        )
+    }
 }
 
 private fun buildStops(
@@ -4206,6 +4245,37 @@ private fun readGeoPoint(
         }
     }
 }
+
+/**
+ * Decodes only a screen-sized fallback image. Decoding a modern camera photo at
+ * its original dimensions can temporarily allocate tens of megabytes per item.
+ */
+private fun decodeSampledBitmap(
+    contentResolver: ContentResolver,
+    uri: Uri,
+    maxDimension: Int = 1_600
+): Bitmap? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    contentResolver.openInputStream(uri)?.use { stream ->
+        BitmapFactory.decodeStream(stream, null, bounds)
+    }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+
+    var sampleSize = 1
+    while (bounds.outWidth / sampleSize > maxDimension * 2 ||
+        bounds.outHeight / sampleSize > maxDimension * 2
+    ) {
+        sampleSize *= 2
+    }
+
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = sampleSize
+        inPreferredConfig = Bitmap.Config.RGB_565
+    }
+    contentResolver.openInputStream(uri)?.use { stream ->
+        BitmapFactory.decodeStream(stream, null, options)
+    }
+}.getOrNull()
 
 private fun ContentResolver.getDisplayName(uri: Uri): String {
     return query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
