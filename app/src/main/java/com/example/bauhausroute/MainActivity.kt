@@ -523,16 +523,27 @@ private fun FarmerAuthApp(
             onFarmerClick = {
                 val googleAccount = pendingGoogleAccount
                 if (isSkipRoleSelection) {
-                    farmer = FarmerProfile(
-                        name = "測試農民",
-                        phone = "",
-                        email = "farmer.tester@local",
-                        password = "",
-                        address = "",
-                        role = UserRole.FARMER
-                    )
-                    isSkipRoleSelection = false
-                    route = AuthRoute.Main
+                    launchAuthAction {
+                        val email = "farmer.tester@local"
+                        val userId = userDao.save(
+                            UserAccountEntity(
+                                email = email,
+                                password = "",
+                                userRole = UserRole.FARMER
+                            )
+                        )
+                        farmer = FarmerProfile(
+                            userId = userId,
+                            name = "測試農民",
+                            phone = "",
+                            email = email,
+                            password = "",
+                            address = "",
+                            role = UserRole.FARMER
+                        )
+                        isSkipRoleSelection = false
+                        route = AuthRoute.Main
+                    }
                 } else if (googleAccount == null) {
                     route = AuthRoute.Register
                 } else {
@@ -551,16 +562,27 @@ private fun FarmerAuthApp(
             },
             onCleanerClick = {
                 if (isSkipRoleSelection) {
-                    farmer = FarmerProfile(
-                        name = "測試清潔團隊",
-                        phone = "",
-                        email = "cleaner.tester@local",
-                        password = "",
-                        address = "",
-                        role = UserRole.CLEANER
-                    )
-                    isSkipRoleSelection = false
-                    route = AuthRoute.Main
+                    launchAuthAction {
+                        val email = "cleaner.tester@local"
+                        val userId = userDao.save(
+                            UserAccountEntity(
+                                email = email,
+                                password = "",
+                                userRole = UserRole.CLEANER
+                            )
+                        )
+                        farmer = FarmerProfile(
+                            userId = userId,
+                            name = "測試清潔團隊",
+                            phone = "",
+                            email = email,
+                            password = "",
+                            address = "",
+                            role = UserRole.CLEANER
+                        )
+                        isSkipRoleSelection = false
+                        route = AuthRoute.Main
+                    }
                 } else {
                     route = AuthRoute.CleanerRegister
                 }
@@ -3145,6 +3167,8 @@ private fun AddFarmlandDialog(
     var regionName by remember { mutableStateOf("") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var isImagePickerOpen by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
     BackHandler(enabled = isImagePickerOpen) {
         isImagePickerOpen = false
     }
@@ -3158,6 +3182,7 @@ private fun AddFarmlandDialog(
         if (uri != null) {
             persistImageReadPermission(context, uri)
             imageUri = uri
+            saveError = null
         }
     }
 
@@ -3176,34 +3201,52 @@ private fun AddFarmlandDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
-                enabled = regionName.isNotBlank() && imageUri != null,
+                enabled = regionName.isNotBlank() && imageUri != null && !isSaving,
                 onClick = {
                     val pickedUri = imageUri ?: return@TextButton
                     scope.launch {
-                        val point = withContext(Dispatchers.IO) {
-                            readGeoPoint(context.contentResolver, pickedUri)
-                        }
-                        val trashCount = generateTrashCount(regionName)
-                        dao.insert(
-                            FarmerFarmlandEntity(
-                                ownerUserId = ownerUserId,
-                                regionName = regionName.trim(),
-                                coverImageUri = pickedUri.toString(),
-                                detailImages = emptyList(),
-                                latitude = point?.latitude,
-                                longitude = point?.longitude,
-                                severity = severityForTrashCount(trashCount),
-                                processStatus = "待處理",
-                                trashCount = trashCount,
-                                description = buildAiInspectionDescription(regionName, trashCount, point),
-                                timestampMillis = System.currentTimeMillis()
+                        isSaving = true
+                        saveError = null
+                        val saveResult = runCatching {
+                            // HEIF variants are not decoded consistently by every
+                            // device. Missing/unsupported EXIF must not prevent save.
+                            val point = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    readGeoPoint(context.contentResolver, pickedUri)
+                                }.getOrNull()
+                            }
+                            val trimmedName = regionName.trim()
+                            val trashCount = generateTrashCount(trimmedName)
+                            dao.insert(
+                                FarmerFarmlandEntity(
+                                    ownerUserId = ownerUserId,
+                                    regionName = trimmedName,
+                                    coverImageUri = pickedUri.toString(),
+                                    detailImages = emptyList(),
+                                    latitude = point?.latitude,
+                                    longitude = point?.longitude,
+                                    severity = severityForTrashCount(trashCount),
+                                    processStatus = "待處理",
+                                    trashCount = trashCount,
+                                    description = buildAiInspectionDescription(trimmedName, trashCount, point),
+                                    timestampMillis = System.currentTimeMillis()
+                                )
                             )
-                        )
-                        onDismiss()
+                        }
+                        isSaving = false
+                        saveResult.onSuccess {
+                            onDismiss()
+                        }.onFailure { error ->
+                            saveError = error.message ?: "無法儲存農地，請重新選擇圖片後再試"
+                        }
                     }
                 }
             ) {
-                Text(text = "新增", color = DeepGreen, fontWeight = FontWeight.Black)
+                Text(
+                    text = if (isSaving) "儲存中…" else "新增",
+                    color = DeepGreen,
+                    fontWeight = FontWeight.Black
+                )
             }
         },
         dismissButton = {
@@ -3228,6 +3271,13 @@ private fun AddFarmlandDialog(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(text = if (imageUri == null) "選擇 HEIF 圖片" else "已選擇圖片")
+                }
+                saveError?.let { message ->
+                    Text(
+                        text = message,
+                        color = WarningRed,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         },
